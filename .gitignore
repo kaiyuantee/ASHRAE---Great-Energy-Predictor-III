@@ -1,0 +1,4 @@
+venv/
+Datasets/
+*.csv
+idea/
