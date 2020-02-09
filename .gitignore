@@ -1,5 +1,5 @@
 venv/
 Datasets/
 *.csv
-idea/
+.idea/
 *.json
