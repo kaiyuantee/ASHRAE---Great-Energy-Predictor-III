@@ -13,18 +13,25 @@ import catboost as cat
 
 first = [2, 3, 4, 5, 6]
 second = [8, 9, 10, 11, 12]
-category_cols = ['building_id', 'site_id', 'primary_use', 'is_holiday', 'meter', 'speed_beaufort']
-feature_cols = ['square_feet', 'year_built'] + ['hour', 'weekday', 'building_median'] + [
-    'air_temperature', 'cloudcover',
-    'DewPointC', 'precipMM', 'pressure',
-    'wind_direction', 'wind_speed']
+category_cols = ['building_id', 'site_id', 'primary_use',
+                 'is_holiday', 'meter', 'speed_beaufort']
+feature_cols = ['square_feet', 'year_built'] + \
+               ['hour', 'weekday', 'building_median'] + \
+               ['air_temperature', 'cloud_coverage',
+                'dew_temperature', 'precip_depth_1_hr',
+                'sea_level_pressure','wind_direction',
+                'wind_speed']
 
 
-class LightGBM():
-    #def __init__(self):
+class LightGBM(object):
 
-    #@staticmethod
-    def model(self, x_t, y_t, x_v, y_v):
+    def __init__(self, x_t, y_t, x_v, y_v):
+        self.x_t = x_t
+        self.y_t = y_t
+        self.x_v = x_v
+        self.y_v = y_v
+
+    def model(self):
         params = {
             "objective": "regression",
             "boosting": "gbdt",
@@ -35,24 +42,24 @@ class LightGBM():
             "reg_lambda": 2,
             "metric": "rmse"
         }
-        d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=category_cols, free_raw_data=False)
-        d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=category_cols, free_raw_data=False)
+        d_half_1 = lgb.Dataset(self.x_t, label=self.y_t, categorical_feature=category_cols, free_raw_data=False)
+        d_half_2 = lgb.Dataset(self.x_v, label=self.y_v, categorical_feature=category_cols, free_raw_data=False)
         watchlist_1 = [d_half_1, d_half_2]
         watchlist_2 = [d_half_2, d_half_1]
         print("Building model with first half and validating on second half:")
         model_half_1 = lgb.train(params, train_set=d_half_1, num_boost_round=1000, valid_sets=watchlist_1,
                                  verbose_eval=50, early_stopping_rounds=50)
         # predictions
-        y_pred_valid1 = model_half_1.predict(x_v, num_iteration=model_half_1.best_iteration)
-        print('oof score is', mean_squared_error(y_v, y_pred_valid1))
+        y_pred_valid1 = model_half_1.predict(self.x_v, num_iteration=model_half_1.best_iteration)
+        print('oof score is', mean_squared_error(self.y_v, y_pred_valid1))
         models.append(model_half_1)
         print("Building model with second half and validating on first half:")
         model_half_2 = lgb.train(params, train_set=d_half_2, num_boost_round=1000, valid_sets=watchlist_2,
                                  verbose_eval=50, early_stopping_rounds=50)
-        y_pred_valid2 = model_half_2.predict(x_t, num_iteration=model_half_2.best_iteration)
-        print('oof score is', mean_squared_error(y_t, y_pred_valid2))
+        y_pred_valid2 = model_half_2.predict(self.x_t, num_iteration=model_half_2.best_iteration)
+        print('oof score is', mean_squared_error(self.y_t, y_pred_valid2))
         models.append(model_half_2)
-        ytrue = np.concatenate((y_t, y_v), axis=0)
+        ytrue = np.concatenate((self.y_t, self.y_v), axis=0)
         ypred = np.concatenate((y_pred_valid2, y_pred_valid1), axis=0)
         oof0 = mean_squared_error(ytrue, ypred)
         ooftotal = 0
@@ -60,32 +67,34 @@ class LightGBM():
         print('oof is', np.sqrt(oof0))
 
 
-#class XGBoost():
+class Keras(object):
 
+    def __init__(self, xt, yt, xv,
+                 yv, dense1, dense2,
+                 dense3, dense4, dropout1,
+                 dropout2, dropout3, dropout4,
+                 lr, batch_size, epochs,
+                 patience, fold):
 
+        self.x_t = xt
+        self.y_t = yt
+        self.x_v = xv
+        self.yv = yv
+        self.dense_dim_1 = dense1
+        self.dense_dim_2 = dense2
+        self.dense_dim_3 = dense3
+        self.dense_dim_4 = dense4
+        self.dropout1 = dropout1
+        self.dropout2 = dropout2
+        self.dropout3 = dropout3
+        self.dropout4 = dropout4
+        self.lr = lr
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.patience = patience
+        self.fold = fold
 
-#class CatBoost():
-
-
-
-
-class Keras():
-    def __init__(self, category_cols, feature_cols):
-        self.cat_col = category_cols
-        self.feat_col = feature_cols
-        self.columns = self.cat_col + self.feat_col
-
-    @staticmethod
-    def body(self,
-             dense_dim_1,
-             dense_dim_2,
-             dense_dim_3,
-             dense_dim_4,
-             dropout1,
-             dropout2,
-             dropout3,
-             dropout4,
-             lr):
+    def body(self):
         # Inputs
         site_id = Input(shape=[1], name="site_id")
         building_id = Input(shape=[1], name="building_id")
@@ -128,9 +137,9 @@ class Keras():
             # , Flatten() (emb_wind_direction)
         ])
 
-        categ = Dropout(dropout1)(Dense(dense_dim_1, activation='relu')(concat_emb))
+        categ = Dropout(self.dropout1)(Dense(self.dense_dim_1, activation='relu') (concat_emb))
         categ = BatchNormalization()(categ)
-        categ = Dropout(dropout2)(Dense(dense_dim_2, activation='relu')(categ))
+        categ = Dropout(self.dropout2)(Dense(self.dense_dim_2, activation='relu') (categ))
 
         # main layer
         main_l = concatenate([
@@ -149,9 +158,9 @@ class Keras():
             , buildingmedian
         ])
 
-        main_l = Dropout(dropout3)(Dense(dense_dim_3, activation='relu')(main_l))
+        main_l = Dropout(self.dropout3)(Dense(self.dense_dim_3, activation='relu')(main_l))
         main_l = BatchNormalization()(main_l)
-        main_l = Dropout(dropout4)(Dense(dense_dim_4, activation='relu')(main_l))
+        main_l = Dropout(self.dropout4)(Dense(self.dense_dim_4, activation='relu')(main_l))
 
         # output
         output = Dense(1)(main_l)
@@ -177,19 +186,17 @@ class Keras():
             pressure,
             buildingmedian], output)
 
-        model.compile(optimizer=Adam(lr=lr, beta_1=0.9, beta_2=0.999, amsgrad=False),
+        model.compile(optimizer=Adam(lr=self.lr, beta_1=0.9, beta_2=0.999, amsgrad=False),
                       loss=MSE,
                       metrics=[root_mean_squared_error()])
         return model
 
-
-    @staticmethod
-    def callbacks(self, patience, fold):
-        early_stopping = EarlyStopping(patience=patience,
+    def callbacks(self):
+        early_stopping = EarlyStopping(patience=self.patience,
                                        monitor='val_root_mean_squared_error',
                                        verbose=1)
 
-        model_checkpoint = ModelCheckpoint("model_" + str(fold) + ".hdf5",
+        model_checkpoint = ModelCheckpoint("model_" + str(self.fold) + ".hdf5",
                                            save_best_only=True,
                                            verbose=1,
                                            monitor='val_root_mean_squared_error',
@@ -206,40 +213,20 @@ class Keras():
 
         return early_stopping, model_checkpoint, reducer
 
-    @staticmethod
-    def train(self, fold, x_t, y_t, x_v, y_v, batch_size, epochs):
+    def train(self):
         model = self.body()
-        hist = model.fit(x_t, y_t, batch_size=batch_size, epochs=epochs,
-                               validation_data=(x_v, y_v), verbose=1,
-                               callbacks=[self.callbacks])
-        keras_model = models.load_model("model_" + str(fold) + ".hdf5",
+        hist = model.fit(self.x_t, self.y_t, batch_size=self.batch_size, epochs=self.epochs,
+                         validation_data=(self.x_v, self.y_v), verbose=1,
+                         callbacks=[self.callbacks])
+        keras_model = models.load_model("model_" + str(self.fold) + ".hdf5",
                                         custom_objects={'root_mean_squared_error': root_mean_squared_error})
-        oof = keras_model.predict(x_v)
-        print('oof is', mean_squared_error(y_v, oof))
+        oof = keras_model.predict(self.x_v)
+        print('oof is', mean_squared_error(self.y_v, oof))
         return keras_model
 
 
-def preprocess(option,df,build,weather):
+def preprocess(option, df, build, weather):
 
-    # 'air_temperature_mean_lag72',
-    # 'air_temperature_max_lag72',
-    # 'air_temperature_min_lag72',
-    # 'air_temperature_std_lag72',
-    # 'cloudcover_mean_lag72',
-    # 'DewPointC_mean_lag72',
-    # 'precipMM_mean_lag72',
-    # 'pressure_mean_lag72',
-    # 'wind_direction_mean_lag72',
-    # 'wind_speed_mean_lag72',
-    # 'air_temperature_mean_lag3',
-    # 'air_temperature_max_lag3',
-    # 'air_temperature_min_lag3',
-    # 'cloudcover_mean_lag3',
-    # 'DewPointC_mean_lag3',
-    # 'precipMM_mean_lag3',
-    # 'pressure_mean_lag3',
-    # 'wind_direction_mean_lag3',
-    # 'wind_speed_mean_lag3']
     cols = category_cols + feature_cols
     if option == 'train':
         df = df.merge(build, on='building_id', how='left')
@@ -261,11 +248,12 @@ def preprocess(option,df,build,weather):
 def root_mean_squared_error(y_true, y_pred):
     return K.sqrt(K.mean(K.square(y_pred - y_true), axis=0))
 
+
 def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=0)
 
-# if __name__ == '__main__':
-#
-#     if args.keras:
+
+class XGBoost(object):
 
 
+class Catboost()

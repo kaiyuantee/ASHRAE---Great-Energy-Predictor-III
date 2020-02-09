@@ -2,3 +2,4 @@ venv/
 Datasets/
 *.csv
 idea/
+*.json
