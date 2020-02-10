@@ -62,6 +62,15 @@ def main():
                 xt, yt, xv, yv = xt, yt, xv, yv
             all_models.append(Keras(**configs).train())
 
+    elif args.model == 'xgb':
+        all_models = []
+        for i in range(args.fold):
+            if i % 2 == 0:
+                xt, yt, xv, yv = xv, yv, xt, yt
+            else:
+                xt, yt, xv, yv = xt, yt, xv, yv
+                all_models.append(XGBoost(xt, yt, xv, yv).model())
+
 
 if __name__ == '__main__':
 

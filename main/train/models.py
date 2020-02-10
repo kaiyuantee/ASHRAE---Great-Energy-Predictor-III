@@ -6,6 +6,7 @@ from keras.optimizers import Adam
 from keras.losses import MSE
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
+import xgboost as xgb
 import gc
 from sklearn.preprocessing import LabelEncoder
 from ..utils import memory_reducer
@@ -65,6 +66,7 @@ class LightGBM(object):
         ooftotal = 0
         ooftotal += oof0 * len(ytrue)
         print('oof is', np.sqrt(oof0))
+        gc.collect()
 
 
 class Keras(object):
@@ -241,8 +243,64 @@ def root_mean_squared_error(y_true, y_pred):
 def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=0)
 
-#
-# class XGBoost(object):
+
+class XGBoost(object):
+
+    def __init__(self, x_t, y_t, x_v, y_v):
+        self.x_t = x_t
+        self.y_t = y_t
+        self.x_v = x_v
+        self.y_v = y_v
+
+    def model(self):
+
+        print('\n...Training First Half...')
+        # TODO: make a list of arguments to pass?
+        reg = xgb.XGBRegressor(n_estimators=5000,
+                               eta=0.005,
+                               subsample=1,
+                               tree_method='gpu_hist',
+                               max_depth=13,
+                               objective='reg:squarederror',
+                               reg_lambda=2
+                               # num_boost_round=1000
+                               )
+        # params = {"learning_rate":[0.1,0.01],
+        #           "cosample_bytree":[0.2,0.4,0.8,1.0],
+        #           "subsample":[0.2,0.4,0.6,0.8,1.0],
+        #           "max_depth":[2,3,4],
+        #           "n_estimators":[200,400,600,800,1000,1500,2000],
+        #           "reg_lambda":[1,1.5,2],
+        #           "gamma":['0,0,1,0,3,0,5'],
+        #           }
+        # score = {'RMSE':'rmse'}
+        # n_iter = 50
+        # grid = RandomizedSearch
+
+        hist1 = reg.fit(self.x_t,
+                        self.y_t,
+                        eval_set=[(self.x_v, self.y_v)],
+                        eval_metric='rmse',
+                        verbose=20,
+                        early_stopping_rounds=50)
+
+        oof1 = hist1.predict(self.x_v)
+        print('*' * 20)
+        print('oof score is', mean_squared_error(self.y_v, oof1))
+        print('*' * 20)
+        gc.collect()
+        # hist2 = reg.fit(x_val,
+        #                 y_val,
+        #                 eval_set=[(x_train, y_train)],
+        #                 eval_metric='rmse',
+        #                 verbose=20,
+        #                 early_stopping_rounds=50)
+        # oof2 = hist2.predict(x_train)
+        # print('*' * 20)
+        # print('oof score is', mean_squared_error(y_train, oof2))
+        # print('*' * 20)
+        # models.append(hist2)
+
 #
 #
 # class Catboost()
