@@ -10,7 +10,6 @@ import gc
 from sklearn.preprocessing import LabelEncoder
 from ..utils import memory_reducer
 
-
 first = [2, 3, 4, 5, 6]
 second = [8, 9, 10, 11, 12]
 category_cols = ['building_id', 'site_id', 'primary_use',
@@ -19,7 +18,7 @@ feature_cols = ['square_feet', 'year_built'] + \
                ['hour', 'weekday', 'building_median'] + \
                ['air_temperature', 'cloud_coverage',
                 'dew_temperature', 'precip_depth_1_hr',
-                'sea_level_pressure','wind_direction',
+                'sea_level_pressure', 'wind_direction',
                 'wind_speed']
 
 
@@ -32,7 +31,6 @@ class LightGBM(object):
         self.y_v = y_v
 
     def model(self):
-
         all_models = []
         params = {
             "objective": "regression",
@@ -71,30 +69,18 @@ class LightGBM(object):
 
 class Keras(object):
 
-    def __init__(self, xt, yt, xv,
-                 yv, dense1, dense2,
-                 dense3, dense4, dropout1,
-                 dropout2, dropout3, dropout4,
-                 lr, batch_size, epochs,
-                 patience, fold):
+    def __init__(self, **kwargs):
 
-        self.x_t = xt
-        self.y_t = yt
-        self.x_v = xv
-        self.y_v = yv
-        self.dense_dim_1 = dense1
-        self.dense_dim_2 = dense2
-        self.dense_dim_3 = dense3
-        self.dense_dim_4 = dense4
-        self.dropout1 = dropout1
-        self.dropout2 = dropout2
-        self.dropout3 = dropout3
-        self.dropout4 = dropout4
-        self.lr = lr
-        self.batch_size = batch_size
-        self.epochs = epochs
-        self.patience = patience
-        self.fold = fold
+        keys = ['x_t', 'y_t', 'x_v', 'y_v',
+                'dense_dim_1', 'dense_dim_2',
+                'dense_dim_3', 'dense_dim_4',
+                'dropout1', 'dropout2',
+                'dropout3', 'dropout4',
+                'lr', 'batch_size', 'epochs',
+                'patience', 'fold']
+
+        for key in keys:
+            setattr(self, key, kwargs.get(key))
 
     def body(self):
         # Inputs
@@ -105,16 +91,16 @@ class Keras(object):
         square_feet = Input(shape=[1], name="square_feet")
         year_built = Input(shape=[1], name="year_built")
         air_temperature = Input(shape=[1], name="air_temperature")
-        cloud_coverage = Input(shape=[1], name="cloudcover")
-        dew_temperature = Input(shape=[1], name="DewPointC")
+        cloud_coverage = Input(shape=[1], name="cloud_coverage")
+        dew_temperature = Input(shape=[1], name="dew_temperature")
         hour = Input(shape=[1], name="hour")
-        precip = Input(shape=[1], name="precipMM")
+        precip = Input(shape=[1], name="precip_depth_1_hr")
         wind_direction = Input(shape=[1], name="wind_direction")
         wind_speed = Input(shape=[1], name="wind_speed")
         weekday = Input(shape=[1], name="weekday")
         beaufort_scale = Input(shape=[1], name="speed_beaufort")
         isholiday = Input(shape=[1], name='is_holiday')
-        pressure = Input(shape=[1], name='pressure')
+        pressure = Input(shape=[1], name='sea_level_pressure')
         buildingmedian = Input(shape=[1], name='building_median')
 
         # Embeddings layers
@@ -138,9 +124,9 @@ class Keras(object):
             , Flatten()(emb_wind_direction)
         ])
 
-        categ = Dropout(self.dropout1)(Dense(self.dense_dim_1, activation='relu') (concat_emb))
+        categ = Dropout(self.dropout1)(Dense(self.dense_dim_1, activation='relu')(concat_emb))
         categ = BatchNormalization()(categ)
-        categ = Dropout(self.dropout2)(Dense(self.dense_dim_2, activation='relu') (categ))
+        categ = Dropout(self.dropout2)(Dense(self.dense_dim_2, activation='relu')(categ))
 
         # main layer
         main_l = concatenate([
@@ -227,8 +213,7 @@ class Keras(object):
 
 
 def preprocess(option, df, build, weather):
-
-    le = LabelEncoder
+    le = LabelEncoder()
     cols = category_cols + feature_cols
     if option == 'train':
         df = df.merge(build, on='building_id', how='left')

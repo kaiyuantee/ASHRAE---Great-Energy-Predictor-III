@@ -40,27 +40,27 @@ def main():
 
     elif args.model == 'keras':
         all_models = []
-        configs = [xt, yt, xv, yv,
-                   args.dense_dim_1,
-                   args.dense_dim_2,
-                   args.dense_dim_3,
-                   args.dense_dim_4,
-                   args.dropout1,
-                   args.dropout2,
-                   args.dropout3,
-                   args.dropout4,
-                   args.lr,
-                   args.batch_size,
-                   args.epochs,
-                   args.patience,
-                   args.fold]
+        configs = dict(x_t=xt, y_t=yt, x_v=xv, y_v=yv,
+                       dense_dim_1=args.dense_dim_1,
+                       dense_dim_2=args.dense_dim_2,
+                       dense_dim_3=args.dense_dim_3,
+                       dense_dim_4=args.dense_dim_4,
+                       dropout1=args.dropout1,
+                       dropout2=args.dropout2,
+                       dropout3=args.dropout3,
+                       dropout4=args.dropout4,
+                       lr=args.lr,
+                       batch_size=args.batch_size,
+                       epochs=args.epochs,
+                       patience=args.patience,
+                       fold=args.fold)
 
         for i in range(args.fold):
             if i % 2 == 0:
                 xt, yt, xv, yv = xv, yv, xt, yt
             else:
                 xt, yt, xv, yv = xt, yt, xv, yv
-            all_models.append(Keras(configs).train())
+            all_models.append(Keras(**configs).train())
 
 
 if __name__ == '__main__':
