@@ -3,3 +3,4 @@ Datasets/
 *.csv
 .idea/
 *.json
+__pycache__/

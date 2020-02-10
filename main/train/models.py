@@ -10,6 +10,8 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
 import xgboost as xgb
 import catboost as cat
+from .utils import memory_reducer
+from sklearn.preprocessing import LabelEncoder
 
 first = [2, 3, 4, 5, 6]
 second = [8, 9, 10, 11, 12]
@@ -108,12 +110,12 @@ class Keras(object):
         dew_temperature = Input(shape=[1], name="DewPointC")
         hour = Input(shape=[1], name="hour")
         precip = Input(shape=[1], name="precipMM")
-        wind_direction = Input(shape=[1], name="wind_direction")
-        wind_speed = Input(shape=[1], name="wind_speed")
+        #wind_direction = Input(shape=[1], name="wind_direction")
+        #wind_speed = Input(shape=[1], name="wind_speed")
         weekday = Input(shape=[1], name="weekday")
         beaufort_scale = Input(shape=[1], name="speed_beaufort")
         isholiday = Input(shape=[1], name='is_holiday')
-        pressure = Input(shape=[1], name='pressure')
+        #pressure = Input(shape=[1], name='pressure')
         buildingmedian = Input(shape=[1], name='building_median')
 
         # Embeddings layers
@@ -151,10 +153,10 @@ class Keras(object):
             , cloud_coverage
             , dew_temperature
             , precip
-            , wind_direction
-            , wind_speed
+            #, wind_direction
+            #, wind_speed
             , beaufort_scale
-            , pressure
+            #, pressure
             , buildingmedian
         ])
 
@@ -179,11 +181,11 @@ class Keras(object):
             hour,
             weekday,
             precip,
-            wind_direction,
-            wind_speed,
+            #wind_direction,
+            #wind_speed,
             beaufort_scale,
             isholiday,
-            pressure,
+            #pressure,
             buildingmedian], output)
 
         model.compile(optimizer=Adam(lr=self.lr, beta_1=0.9, beta_2=0.999, amsgrad=False),
@@ -227,11 +229,14 @@ class Keras(object):
 
 def preprocess(option, df, build, weather):
 
+    le = LabelEncoder
     cols = category_cols + feature_cols
     if option == 'train':
         df = df.merge(build, on='building_id', how='left')
         # df = df[df.site_id==siteid]
         df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
+        df = memory_reducer(df)
+        df['primary_use'] = le.transform(df['primary_use'])
         df = df[(df.month.isin(first))]  # &(df.site_id==siteid)]
         y = df.meter_reading  # .values
         df = df[cols]
@@ -239,6 +244,8 @@ def preprocess(option, df, build, weather):
         df = df.merge(build, on='building_id', how='left')
         # df = df[df.site_id==siteid]
         df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
+        df = memory_reducer(df)
+        df['primary_use'] = le.transform(df['primary_use'])
         df = df[(df.month.isin(second))]  # &(df.site_id==siteid)]
         y = df.meter_reading  # .values
         df = df[cols]
@@ -252,8 +259,8 @@ def root_mean_squared_error(y_true, y_pred):
 def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=0)
 
-
-class XGBoost(object):
-
-
-class Catboost()
+#
+# class XGBoost(object):
+#
+#
+# class Catboost()

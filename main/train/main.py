@@ -8,28 +8,25 @@ def main():
     arg = parser.add_argument
 
     arg('--model', default='lightgbm', help='model type')
-    arg('--dense_dim_1', default='10', help='number of nodes')
-    arg('--dense_dim_2', default='10', help='number of nodes')
-    arg('--dense_dim_3', default='10', help='number of nodes')
-    arg('--dense_dim_4', default='10', help='number of nodes')
-    arg('--dropout1', default='0.25', help='dropout scale')
-    arg('--dropout2', default='0.25', help='dropout scale')
-    arg('--dropout3', default='0.25', help='dropout scale')
-    arg('--dropout4', default='0.25', help='dropout scale')
-    arg('--lr', default='0.01', help='learning rate')
-    arg('--batch_size', default='128', help='batchsize')
-    arg('--epochs', default='10', help='number of epochs')
-    arg('--patience', default='2', help='number of patience')
-    arg('--fold', default='2', help='number of folds')
+    arg('--dense_dim_1', default=10, help='number of nodes')
+    arg('--dense_dim_2', default=10, help='number of nodes')
+    arg('--dense_dim_3', default=10, help='number of nodes')
+    arg('--dense_dim_4', default=10, help='number of nodes')
+    arg('--dropout1', default=0.25, help='dropout scale')
+    arg('--dropout2', default=0.25, help='dropout scale')
+    arg('--dropout3', default=0.25, help='dropout scale')
+    arg('--dropout4', default=0.25, help='dropout scale')
+    arg('--lr', default=0.01, help='learning rate')
+    arg('--batch_size', default=128, help='batchsize')
+    arg('--epochs', default=10, help='number of epochs')
+    arg('--patience', default=2, help='number of patience')
+    arg('--fold', default=2, help='number of folds')
 
     args = parser.parse_args()
 
     df1, df2, df3 = create_dataset()
     xt, yt = preprocess('train', df1, df2, df3)
     xv, yv = preprocess('val', df1, df2, df3)
-    # TODO: to delete this shit just for experimenting
-    xt.fillna(xt.mean(), inplace=True)
-    xv.fillna(xv.mean(), inplace=True)
     if args.model == 'lightgbm':
         LightGBM(xt, yt, xv, yv).model()
     elif args.model == 'keras':
