@@ -4,7 +4,7 @@ import warnings
 from pathlib import Path
 from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categorical_dtype
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
-from main.train.preprocessing import Dataframe, Weather
+from .datasets import Dataframe, Weather
 warnings.filterwarnings('ignore')
 DATA_ROOT = Path(__file__).parent.parent / 'Datasets'
 
@@ -30,17 +30,17 @@ class Dataset(object):
             weatherdf = pd.read_csv(DATA_ROOT / f'weather_{self.option}.csv',
                                     dtype={'site_id': np.int8},
                                     index_col=None)
-            df = Dataframe(df, self.option)
-            weather_df = Weather(weatherdf)
+            df = Dataframe(df, self.option).process()
+            weather_df = Weather(weatherdf).process()
             df = memory_reducer(df)
             building_df = memory_reducer(building_df)
             weather_df = memory_reducer(weather_df)
 
+            return df, building_df, weather_df
+
         else:
             print('Please enter either train or test only')
             exit()
-
-        return df, building_df, weather_df
 
 
 def memory_reducer(df, use_float16=False):

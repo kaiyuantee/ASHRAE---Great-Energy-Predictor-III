@@ -6,40 +6,33 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-class Dataframe:
+class Dataframe(object):
 
     def __init__(self, traindf, option):
+
         self.df = traindf
         self.option = option
-        self.process()
 
     def process(self):
+
         if self.option == 'train':
             self.df['meter_reading'] = np.log1p(self.df['meter_reading'])
             newdf = self.df.query('not (building_id <= 104 & meter == 0 & timestamp <= "2016-05-20")')
             df_group = newdf.groupby('building_id')['meter_reading']
-            building_mean = df_group.mean()  # .astype(np.float16)
             building_median = df_group.median()  # .astype(np.float16)
-            building_min = df_group.min()  # .astype(np.float16)
-            building_max = df_group.max()  # .astype(np.float16)
-            building_std = df_group.std()  # .astype(np.float16)
-            newdf['building_mean'] = newdf['building_id'].map(building_mean)
             newdf['building_median'] = newdf['building_id'].map(building_median)
-            newdf['building_min'] = newdf['building_id'].map(building_min)
-            newdf['building_max'] = newdf['building_id'].map(building_max)
-            newdf['building_std'] = newdf['building_id'].map(building_std)
+
         else:
             return self.df
 
         return newdf
 
 
-class Weather:
+class Weather(object):
 
     def __init__(self, df):
 
         self.df = df
-        self.process()
 
     def fill_nan_values(self):
 
@@ -68,6 +61,7 @@ class Weather:
         self.df["month"] = self.df["timestamp"].dt.month
         self.df["hour"] = self.df['timestamp'].dt.hour
         self.df["weekday"] = self.df["timestamp"].dt.weekday
+        self.df["weekofday"] = self.df["timestamp"].dt.weekofday
 
         # Reset Index for Fast Update
         self.df = self.df.set_index(['site_id', 'day', 'month'])
@@ -115,7 +109,7 @@ class Weather:
 
         # reset index and drop useless cols
         self.df.reset_index(inplace=True)
-        self.df.drop(['day', 'week', 'month'], axis=1, inplace=True)
+        self.df.drop(['day', 'week'], axis=1, inplace=True)
 
         return self.df
 
@@ -180,31 +174,48 @@ class Weather:
     def add_lag_feature(self, window=3):
 
         group_df = self.df.groupby('site_id')
-        cols = ['air_temperature', 'cloudcover', 'DewPointC',
-                'precipMM', 'pressure', 'wind_direction', 'wind_speed']
+        cols = ['air_temperature', 'cloud_coverage',
+                'dew_temperature', 'precip_depth_1_hr']
         rolled = group_df[cols].rolling(window=window, min_periods=0)
-        lag_mean = rolled.mean().reset_index()  # .astype(np.float16)
-        lag_max = rolled.max().reset_index()  # .astype(np.float16)
-        lag_min = rolled.min().reset_index()  # .astype(np.float16)
-        lag_std = rolled.std().reset_index()  # .astype(np.float16)
+        lag_mean = rolled.mean().reset_index().astype(np.float16)
+        lag_median = rolled.median().reset_index().astype(np.float16)
+        lag_max = rolled.max().reset_index().astype(np.float16)
+        lag_min = rolled.min().reset_index().astype(np.float16)
+        lag_std = rolled.std().reset_index().astype(np.float16)
+        lag_skew = rolled.skew().reset_index().astype(np.float16)
         for col in cols:
             self.df[f'{col}_mean_lag{window}'] = lag_mean[col]
+            self.df[f'{col}_median_lag{window}'] = lag_median[col]
             self.df[f'{col}_max_lag{window}'] = lag_max[col]
             self.df[f'{col}_min_lag{window}'] = lag_min[col]
             self.df[f'{col}_std_lag{window}'] = lag_std[col]
+            self.df[f'{col}_skew_lag{window}'] = lag_skew[col]
 
         return self.df
 
-    # def timefeat(self):
-    #
-    #     self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
-    #     self.df['day'] = np.int8(self.df['timestamp'].dt.day)
-    #     self.df['week'] = np.int8(self.df['timestamp'].dt.week)
-    #     self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
-    #     self.df['month'] = np.int8(self.df['timestamp'].dt.month)
-    #     self.df['year'] = np.int8(self.df['timestamp'].dt.year - 2000)
-    #
-    #     return self.df
+    def timefeat(self):
+
+        self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
+        # self.df['day'] = np.int8(self.df['timestamp'].dt.day)
+        # self.df['week'] = np.int8(self.df['timestamp'].dt.week)
+        self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
+        self.df['month'] = np.int8(self.df['timestamp'].dt.month)
+        # self.df['year'] = np.int8(self.df['timestamp'].dt.year - 2000)
+
+        return self.df
+
+    def set_localtime(self):
+
+        zone_dict = {0: 4, 1: 0, 2: 7, 3: 4,
+                     4: 7, 5: 0, 6: 4, 7: 4, 8: 4,
+                     9: 5, 10: 7, 11: 4, 12: 0,
+                     13: 5, 14: 4, 15: 4}
+
+        for sid, zone in zone_dict.items():
+            sids = self.df.site_id == sid
+            self.df.loc[sids, 'timestamp'] = self.df[sids].timestamp - pd.offsets.Hour(zone)
+
+        return self.df
 
     @staticmethod
     def degtocompass(num):
@@ -220,12 +231,17 @@ class Weather:
         # self.df['month'] = self.df.year * 12 + self.df.timestamp.dt.month
         # self.df = self.df.loc[(self.df.month > self.x) & (self.df.month <= self.y)]
         # self.df.drop(['year', 'month'], axis=1, inplace=True)
-        self.df = self.fill_nan_values()
+        self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure'])
+        self.df = self.set_localtime()
+        self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+        # self.df = self.fill_nan_values()
+        self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
-        self.df = self.beaufort()
-        self.df['wind_direction'] = self.df['wind_direction'].apply(self.degtocompass)
+        # self.df = self.beaufort()
+        # self.df['wind_direction'] = self.df['wind_direction'].apply(self.degtocompass)
 
         return self.df
+
 
 
 

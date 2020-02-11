@@ -1,6 +1,7 @@
 import argparse
 from .models import *
-from ..utils import Dataset
+from .utils import Dataset
+from .feature_engineering import Preprocess
 
 
 def main():
@@ -32,8 +33,7 @@ def main():
                             args.ending_month,
                             args.option).create_dataset()
 
-    xt, yt = preprocess('train', df1, df2, df3)
-    xv, yv = preprocess('val', df1, df2, df3)
+    xt, yt, xv, yv = Preprocess(df1, df2, df3).core()
 
     if args.model == 'lightgbm':
         LightGBM(xt, yt, xv, yv)

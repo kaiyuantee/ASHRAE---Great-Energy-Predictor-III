@@ -8,22 +8,6 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
 import xgboost as xgb
 import gc
-from sklearn.preprocessing import LabelEncoder
-from ..utils import memory_reducer
-
-le = LabelEncoder()
-first = [2, 3, 4, 5, 6]
-second = [8, 9, 10, 11, 12]
-
-category_cols = ['building_id', 'site_id', 'primary_use',
-                 'is_holiday', 'meter', 'speed_beaufort']
-
-feature_cols = ['square_feet', 'hour', 'weekday', 'building_median'] + \
-               ['air_temperature', 'cloud_coverage', 'dew_temperature',
-                'precip_depth_1_hr', 'sea_level_pressure', 'wind_direction',
-                'wind_speed']
-
-cols = category_cols + feature_cols
 
 
 class LightGBM(object):
@@ -258,27 +242,6 @@ class Keras(object):
         print('oof is', mean_squared_error(self.y_v, oof))
         gc.collect()
         return keras_model
-
-
-def preprocess(option, df, build, weather):
-
-    if option == 'train':
-        df = df.merge(build, on='building_id', how='left')
-        df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
-        df = memory_reducer(df)
-        df['square_feet'] = np.log1p(df['square_feet'])
-        df['primary_use'] = le.fit_transform(df.primary_use)
-        df = df[(df.month.isin(first))]  # &(df.site_id==siteid)]
-        y = df.meter_reading
-    elif option == 'val':
-        df = df.merge(build, on='building_id', how='left')
-        df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
-        df = memory_reducer(df)
-        df['square_feet'] = np.log1p(df['square_feet'])
-        df['primary_use'] = le.fit_transform(df.primary_use)
-        df = df[(df.month.isin(second))]  # &(df.site_id==siteid)]
-        y = df.meter_reading
-    return df, y
 
 
 def root_mean_squared_error(y_true, y_pred):
