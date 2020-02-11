@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import datetime
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import warnings
 warnings.filterwarnings('ignore')
@@ -10,6 +11,7 @@ class Dataframe(object):
     def __init__(self, traindf, option):
         self.df = traindf
         self.option = option
+        self.process()
 
     def process(self):
         if self.option == 'train':
@@ -34,12 +36,91 @@ class Dataframe(object):
 
 class Weather(object):
 
-    def __init__(self, x, y, df):
-        self.x = x
-        self.y = y
+    def __init__(self, df):
+
         self.df = df
+        self.process()
+
+    def fill_nan_values(self):
+
+        # Find Missing Dates
+        print('Getting missing dates now')
+        time_format = "%Y-%m-%d %H:%M:%S"
+        start_date = datetime.datetime.strptime(self.df['timestamp'].min(), time_format)
+        end_date = datetime.datetime.strptime(self.df['timestamp'].max(), time_format)
+        total_hours = int(((end_date - start_date).total_seconds() + 3600) / 3600)
+        hours_list = [(end_date - datetime.timedelta(hours=x)).strftime(time_format) for x in range(total_hours)]
+
+        print('Preparing a temporary dataframe for filling')
+        for site_id in range(16):
+            site_hours = np.array(self.df[self.df['site_id'] == site_id]['timestamp'])
+            new_rows = pd.DataFrame(np.setdiff1d(hours_list, site_hours), columns=['timestamp'])
+            new_rows['site_id'] = site_id
+            self.df = pd.concat([self.df, new_rows])
+
+            self.df = self.df.reset_index(drop=True)
+
+        # Add new Features
+        print('Creating new features now')
+        self.df['datetime'] = pd.to_datetime(self.df['timestamp'])
+        self.df["day"] = self.df["datetime"].dt.day
+        self.df["week"] = self.df["datetime"].dt.week
+        self.df["month"] = self.df["datetime"].dt.month
+        self.df["hour"] = self.df['datetime'].dt.hour
+        self.df["weekday"] = self.df["datetime"].dt.weekday
+
+        # Reset Index for Fast Update
+        self.df = self.df.set_index(['site_id', 'day', 'month'])
+        print('Filling nan values now please hold')
+        # Air temperature
+        air_temperature_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['air_temperature'].mean(),
+                                              columns=["air_temperature"])
+        self.df.update(air_temperature_filler, overwrite=False)
+
+        # cloud_voerage
+        # Step 1
+        cloud_coverage_filler = self.df.groupby(['site_id', 'day', 'month'])['cloud_coverage'].mean()
+        # Step 2
+        cloud_coverage_filler = pd.DataFrame(cloud_coverage_filler.fillna(method='ffill'), columns=["cloud_coverage"])
+        self.df.update(cloud_coverage_filler, overwrite=False)
+
+        # dew temperature
+        dew_temperature_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['dew_temperature'].mean(),
+                                              columns=["dew_temperature"])
+        self.df.update(dew_temperature_filler, overwrite=False)
+
+        # sea level pressure
+        # Step 1
+        sea_level_filler = self.df.groupby(['site_id', 'day', 'month'])['sea_level_pressure'].mean()
+        # Step 2
+        sea_level_filler = pd.DataFrame(sea_level_filler.fillna(method='ffill'), columns=['sea_level_pressure'])
+        self.df.update(sea_level_filler, overwrite=False)
+
+        # wind direction
+        wind_direction_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_direction'].mean(),
+                                             columns=['wind_direction'])
+        self.df.update(wind_direction_filler, overwrite=False)
+
+        # wind speed
+        wind_speed_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_speed'].mean(),
+                                         columns=['wind_speed'])
+        self.df.update(wind_speed_filler, overwrite=False)
+
+        # precipitation depth 1 hour
+        # Step 1
+        precip_depth_filler = self.df.groupby(['site_id', 'day', 'month'])['precip_depth_1_hr'].mean()
+        # Step 2
+        precip_depth_filler = pd.DataFrame(precip_depth_filler.fillna(method='ffill'), columns=['precip_depth_1_hr'])
+        self.df.update(precip_depth_filler, overwrite=False)
+
+        # reset index and drop useless cols
+        self.df.reset_index(inplace=True)
+        self.df.drop(['datetime', 'day', 'week', 'month'], axis=1, inplace=True)
+
+        return self.df
 
     def holidays(self):
+
         uk = [1, 5]
         ire = [12]
         canada = [7, 11]
@@ -93,9 +174,11 @@ class Weather(object):
         for item in beaufort:
             self.df.loc[(self.df['wind_speed'] >= item[1]) & (self.df['wind_speed'] < item[2]), 'speed_beaufort'] = item[0]
             # self.df.loc[(self.df['gust_speed']>=item[1]) & (self.df['gust_speed']<item[2]), 'gust_beaufort'] = item[0]
+
         return self.df
 
     def add_lag_feature(self, window=3):
+
         group_df = self.df.groupby('site_id')
         cols = ['air_temperature', 'cloudcover', 'DewPointC',
                 'precipMM', 'pressure', 'wind_direction', 'wind_speed']
@@ -109,35 +192,41 @@ class Weather(object):
             self.df[f'{col}_max_lag{window}'] = lag_max[col]
             self.df[f'{col}_min_lag{window}'] = lag_min[col]
             self.df[f'{col}_std_lag{window}'] = lag_std[col]
+
         return self.df
 
-    def timefeat(self):
-        self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
-        self.df['day'] = np.int8(self.df['timestamp'].dt.day)
-        self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
-        self.df['month'] = np.int8(self.df['timestamp'].dt.month)
-        self.df['year'] = np.int8(self.df['timestamp'].dt.year - 2000)
-        return self.df
+    # def timefeat(self):
+    #
+    #     self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
+    #     self.df['day'] = np.int8(self.df['timestamp'].dt.day)
+    #     self.df['week'] = np.int8(self.df['timestamp'].dt.week)
+    #     self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
+    #     self.df['month'] = np.int8(self.df['timestamp'].dt.month)
+    #     self.df['year'] = np.int8(self.df['timestamp'].dt.year - 2000)
+    #
+    #     return self.df
 
     @staticmethod
     def degtocompass(num):
+
         val = int((num / 22.5) + .5)
         arr = [i for i in range(0, 16)]
+
         return arr[(val % 16)]
 
     def process(self):
-        self.df['year'] = self.df.timestamp.dt.year - 2016
-        self.df['month'] = self.df.year * 12 + self.df.timestamp.dt.month
-        self.df = self.df.loc[(self.df.month > self.x) & (self.df.month <= self.y)]
-        self.df.drop(['year', 'month'], axis=1, inplace=True)
-        # TODO: tamporary put at here first until a better solution came up
-        self.df['wind_direction'].fillna(self.df.wind_direction.mean(), inplace=True)
-        # weather = add_lag_feature(add_lag_feature(weather,window=3), window=72)
-        self.df = self.timefeat()
+
+        # self.df['year'] = self.df.timestamp.dt.year - 2016
+        # self.df['month'] = self.df.year * 12 + self.df.timestamp.dt.month
+        # self.df = self.df.loc[(self.df.month > self.x) & (self.df.month <= self.y)]
+        # self.df.drop(['year', 'month'], axis=1, inplace=True)
+        self.df = self.fill_nan_values()
         self.df = self.holidays()
         self.df = self.beaufort()
         self.df['wind_direction'] = self.df['wind_direction'].apply(self.degtocompass)
+
         return self.df
+
 
 
 
