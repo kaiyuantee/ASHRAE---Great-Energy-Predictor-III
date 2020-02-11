@@ -6,7 +6,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-class Dataframe(object):
+class Dataframe:
 
     def __init__(self, traindf, option):
         self.df = traindf
@@ -34,7 +34,7 @@ class Dataframe(object):
         return newdf
 
 
-class Weather(object):
+class Weather:
 
     def __init__(self, df):
 
@@ -62,12 +62,12 @@ class Weather(object):
 
         # Add new Features
         print('Creating new features now')
-        self.df['datetime'] = pd.to_datetime(self.df['timestamp'])
-        self.df["day"] = self.df["datetime"].dt.day
-        self.df["week"] = self.df["datetime"].dt.week
-        self.df["month"] = self.df["datetime"].dt.month
-        self.df["hour"] = self.df['datetime'].dt.hour
-        self.df["weekday"] = self.df["datetime"].dt.weekday
+        self.df['timestamp'] = pd.to_datetime(self.df['timestamp'])
+        self.df["day"] = self.df["timestamp"].dt.day
+        self.df["week"] = self.df["timestamp"].dt.week
+        self.df["month"] = self.df["timestamp"].dt.month
+        self.df["hour"] = self.df['timestamp'].dt.hour
+        self.df["weekday"] = self.df["timestamp"].dt.weekday
 
         # Reset Index for Fast Update
         self.df = self.df.set_index(['site_id', 'day', 'month'])
@@ -115,7 +115,7 @@ class Weather(object):
 
         # reset index and drop useless cols
         self.df.reset_index(inplace=True)
-        self.df.drop(['datetime', 'day', 'week', 'month'], axis=1, inplace=True)
+        self.df.drop(['day', 'week', 'month'], axis=1, inplace=True)
 
         return self.df
 
