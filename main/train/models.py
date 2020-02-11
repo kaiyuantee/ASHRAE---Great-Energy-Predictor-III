@@ -11,27 +11,32 @@ import gc
 from sklearn.preprocessing import LabelEncoder
 from ..utils import memory_reducer
 
+le = LabelEncoder()
 first = [2, 3, 4, 5, 6]
 second = [8, 9, 10, 11, 12]
+
 category_cols = ['building_id', 'site_id', 'primary_use',
                  'is_holiday', 'meter', 'speed_beaufort']
-feature_cols = ['square_feet', 'year_built'] + \
-               ['hour', 'weekday', 'building_median'] + \
-               ['air_temperature', 'cloud_coverage',
-                'dew_temperature', 'precip_depth_1_hr',
-                'sea_level_pressure', 'wind_direction',
+
+feature_cols = ['square_feet', 'hour', 'weekday', 'building_median'] + \
+               ['air_temperature', 'cloud_coverage', 'dew_temperature',
+                'precip_depth_1_hr', 'sea_level_pressure', 'wind_direction',
                 'wind_speed']
+
+cols = category_cols + feature_cols
 
 
 class LightGBM(object):
 
     def __init__(self, x_t, y_t, x_v, y_v):
-        self.x_t = x_t
-        self.y_t = y_t
-        self.x_v = x_v
-        self.y_v = y_v
 
-    def model(self):
+        self.x_t = x_t[cols]
+        self.y_t = y_t
+        self.x_v = x_v[cols]
+        self.y_v = y_v
+        self.train()
+
+    def train(self):
         all_models = []
         params = {
             "objective": "regression",
@@ -69,12 +74,51 @@ class LightGBM(object):
         gc.collect()
 
 
+class XGBoost(object):
+
+    def __init__(self, x_t, y_t, x_v, y_v):
+        self.x_t = x_t[cols]
+        self.y_t = y_t
+        self.x_v = x_v[cols]
+        self.y_v = y_v
+        self.train()
+
+    def train(self):
+        print('\n...Training Now...')
+        # TODO: make a list of arguments to pass?
+        reg = xgb.XGBRegressor(n_estimators=5000,
+                               eta=0.005,
+                               subsample=1,
+                               tree_method='gpu_hist',
+                               max_depth=13,
+                               objective='reg:squarederror',
+                               reg_lambda=2
+                               # num_boost_round=1000
+                               )
+
+        hist1 = reg.fit(self.x_t,
+                        self.y_t,
+                        eval_set=[(self.x_v, self.y_v)],
+                        eval_metric='rmse',
+                        verbose=20,
+                        early_stopping_rounds=50)
+
+        oof1 = hist1.predict(self.x_v)
+        print('*' * 20)
+        print('oof score is', mean_squared_error(self.y_v, oof1))
+        print('*' * 20)
+        gc.collect()
+
+
 class Keras(object):
 
-    def __init__(self, **kwargs):
+    def __init__(self, x_t, y_t, x_v, y_v, **kwargs):
+        self.x_t = {col: x_t[col] for col in cols}
+        self.x_v = {col: x_v[col] for col in cols}
+        self.y_t = y_t
+        self.y_v = y_v
 
-        keys = ['x_t', 'y_t', 'x_v', 'y_v',
-                'dense_dim_1', 'dense_dim_2',
+        keys = ['dense_dim_1', 'dense_dim_2',
                 'dense_dim_3', 'dense_dim_4',
                 'dropout1', 'dropout2',
                 'dropout3', 'dropout4',
@@ -83,6 +127,8 @@ class Keras(object):
 
         for key in keys:
             setattr(self, key, kwargs.get(key))
+
+        self.train()
 
     def body(self):
         # Inputs
@@ -215,24 +261,23 @@ class Keras(object):
 
 
 def preprocess(option, df, build, weather):
-    le = LabelEncoder()
-    cols = category_cols + feature_cols
+
     if option == 'train':
         df = df.merge(build, on='building_id', how='left')
         df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
         df = memory_reducer(df)
+        df['square_feet'] = np.log1p(df['square_feet'])
         df['primary_use'] = le.fit_transform(df.primary_use)
         df = df[(df.month.isin(first))]  # &(df.site_id==siteid)]
-        y = df.meter_reading  # .values
-        df = {col: df[col] for col in cols}
+        y = df.meter_reading
     elif option == 'val':
         df = df.merge(build, on='building_id', how='left')
         df = df.merge(weather, on=['site_id', 'timestamp'], how='left')
         df = memory_reducer(df)
+        df['square_feet'] = np.log1p(df['square_feet'])
         df['primary_use'] = le.fit_transform(df.primary_use)
         df = df[(df.month.isin(second))]  # &(df.site_id==siteid)]
-        y = df.meter_reading  # .values
-        df = {col: df[col] for col in cols}
+        y = df.meter_reading
     return df, y
 
 
@@ -244,63 +289,3 @@ def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=0)
 
 
-class XGBoost(object):
-
-    def __init__(self, x_t, y_t, x_v, y_v):
-        self.x_t = x_t
-        self.y_t = y_t
-        self.x_v = x_v
-        self.y_v = y_v
-
-    def model(self):
-
-        print('\n...Training First Half...')
-        # TODO: make a list of arguments to pass?
-        reg = xgb.XGBRegressor(n_estimators=5000,
-                               eta=0.005,
-                               subsample=1,
-                               tree_method='gpu_hist',
-                               max_depth=13,
-                               objective='reg:squarederror',
-                               reg_lambda=2
-                               # num_boost_round=1000
-                               )
-        # params = {"learning_rate":[0.1,0.01],
-        #           "cosample_bytree":[0.2,0.4,0.8,1.0],
-        #           "subsample":[0.2,0.4,0.6,0.8,1.0],
-        #           "max_depth":[2,3,4],
-        #           "n_estimators":[200,400,600,800,1000,1500,2000],
-        #           "reg_lambda":[1,1.5,2],
-        #           "gamma":['0,0,1,0,3,0,5'],
-        #           }
-        # score = {'RMSE':'rmse'}
-        # n_iter = 50
-        # grid = RandomizedSearch
-
-        hist1 = reg.fit(self.x_t,
-                        self.y_t,
-                        eval_set=[(self.x_v, self.y_v)],
-                        eval_metric='rmse',
-                        verbose=20,
-                        early_stopping_rounds=50)
-
-        oof1 = hist1.predict(self.x_v)
-        print('*' * 20)
-        print('oof score is', mean_squared_error(self.y_v, oof1))
-        print('*' * 20)
-        gc.collect()
-        # hist2 = reg.fit(x_val,
-        #                 y_val,
-        #                 eval_set=[(x_train, y_train)],
-        #                 eval_metric='rmse',
-        #                 verbose=20,
-        #                 early_stopping_rounds=50)
-        # oof2 = hist2.predict(x_train)
-        # print('*' * 20)
-        # print('oof score is', mean_squared_error(y_train, oof2))
-        # print('*' * 20)
-        # models.append(hist2)
-
-#
-#
-# class Catboost()

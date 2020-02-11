@@ -36,12 +36,11 @@ def main():
     xv, yv = preprocess('val', df1, df2, df3)
 
     if args.model == 'lightgbm':
-        LightGBM(xt, yt, xv, yv).model()
+        LightGBM(xt, yt, xv, yv)
 
     elif args.model == 'keras':
         all_models = []
-        configs = dict(x_t=xt, y_t=yt, x_v=xv, y_v=yv,
-                       dense_dim_1=args.dense_dim_1,
+        configs = dict(dense_dim_1=args.dense_dim_1,
                        dense_dim_2=args.dense_dim_2,
                        dense_dim_3=args.dense_dim_3,
                        dense_dim_4=args.dense_dim_4,
@@ -60,7 +59,7 @@ def main():
                 xt, yt, xv, yv = xv, yv, xt, yt
             else:
                 xt, yt, xv, yv = xt, yt, xv, yv
-            all_models.append(Keras(**configs).train())
+            all_models.append(Keras(xt, yt, xv, yv, **configs))
 
     elif args.model == 'xgb':
         all_models = []
@@ -69,7 +68,7 @@ def main():
                 xt, yt, xv, yv = xv, yv, xt, yt
             else:
                 xt, yt, xv, yv = xt, yt, xv, yv
-                all_models.append(XGBoost(xt, yt, xv, yv).model())
+                all_models.append(XGBoost(xt, yt, xv, yv))
 
 
 if __name__ == '__main__':
