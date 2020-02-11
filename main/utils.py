@@ -29,10 +29,9 @@ class Dataset(object):
                                       index_col=None)
             weatherdf = pd.read_csv(DATA_ROOT / f'weather_{self.option}.csv',
                                     dtype={'site_id': np.int8},
-                                    parse_dates=['timestamp'],
                                     index_col=None)
-            df = Dataframe(df, self.option).process()
-            weather_df = Weather(self.startM, self.endM, weatherdf).process()
+            df = Dataframe(df, self.option)
+            weather_df = Weather(weatherdf)
             df = memory_reducer(df)
             building_df = memory_reducer(building_df)
             weather_df = memory_reducer(weather_df)
