@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import keras.backend as K
 from keras import Input, Model, models
 from keras.layers import Dense, Dropout, Embedding, concatenate, Flatten, BatchNormalization
@@ -7,98 +8,168 @@ from keras.losses import MSE
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
 import xgboost as xgb
+from catboost import CatBoostRegressor
 import gc
+import pickle
+from tqdm import tqdm
+category_cols = [
+    "building_id",
+    "primary_use",
+    "meter",
+    "weekday",
+    "hour",
+    'is_holiday'
+]
 
 
 class LightGBM(object):
 
-    def __init__(self, x_t, y_t, x_v, y_v):
+    def __init__(self, x_t, x_v):
 
-        self.x_t = x_t[cols]
-        self.y_t = y_t
-        self.x_v = x_v[cols]
-        self.y_v = y_v
+        self.x_t = x_t
+        self.x_v = x_v
         self.train()
 
     def train(self):
-        all_models = []
-        params = {
-            "objective": "regression",
-            "boosting": "gbdt",
-            "num_leaves": 31,
-            "learning_rate": 0.05,
-            "bagging_fraction": 0.95,
-            "feature_fraction": 0.85,
-            "reg_lambda": 2,
-            "metric": "rmse"
-        }
-        d_half_1 = lgb.Dataset(self.x_t, label=self.y_t, categorical_feature=category_cols, free_raw_data=False)
-        d_half_2 = lgb.Dataset(self.x_v, label=self.y_v, categorical_feature=category_cols, free_raw_data=False)
-        watchlist_1 = [d_half_1, d_half_2]
-        watchlist_2 = [d_half_2, d_half_1]
-        print("Building model with first half and validating on second half:")
-        model_half_1 = lgb.train(params, train_set=d_half_1, num_boost_round=1000, valid_sets=watchlist_1,
-                                 verbose_eval=50, early_stopping_rounds=50)
-        # predictions
-        y_pred_valid1 = model_half_1.predict(self.x_v, num_iteration=model_half_1.best_iteration)
-        print('oof score is', mean_squared_error(self.y_v, y_pred_valid1))
-        all_models.append(model_half_1)
-        print("Building model with second half and validating on first half:")
-        model_half_2 = lgb.train(params, train_set=d_half_2, num_boost_round=1000, valid_sets=watchlist_2,
-                                 verbose_eval=50, early_stopping_rounds=50)
-        y_pred_valid2 = model_half_2.predict(self.x_t, num_iteration=model_half_2.best_iteration)
-        print('oof score is', mean_squared_error(self.y_t, y_pred_valid2))
-        all_models.append(model_half_2)
-        ytrue = np.concatenate((self.y_t, self.y_v), axis=0)
-        ypred = np.concatenate((y_pred_valid2, y_pred_valid1), axis=0)
-        oof0 = mean_squared_error(ytrue, ypred)
-        ooftotal = 0
-        ooftotal += oof0 * len(ytrue)
-        print('oof is', np.sqrt(oof0))
-        gc.collect()
+
+        all_models = {}
+        cv_scores = {"site_id": [], "cv_score": []}
+
+        for i in tqdm(range(16)):
+
+            x_t = self.x_t['site_id' == i]
+            x_v = self.x_v['site_id' == i]
+            y_t = x_t.meter_reading
+            y_v = x_v.meter_reading
+            scores = 0
+            all_models[i] = []
+            params = {
+                "objective": "regression",
+                "boosting": "gbdt",
+                "num_leaves": 31,
+                "learning_rate": 0.05,
+                "bagging_fraction": 0.95,
+                "feature_fraction": 0.85,
+                "reg_lambda": 2,
+                "metric": "rmse"
+            }
+            d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=category_cols, free_raw_data=False)
+            d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=category_cols, free_raw_data=False)
+            watchlist_1 = [d_half_1, d_half_2]
+            watchlist_2 = [d_half_2, d_half_1]
+            print("Building model in fold 1")
+            model_half_1 = lgb.train(params, train_set=d_half_1, num_boost_round=1000, valid_sets=watchlist_1,
+                                     verbose_eval=50, early_stopping_rounds=50)
+            # predictions
+            y_pred_valid1 = model_half_1.predict(x_v, num_iteration=model_half_1.best_iteration)
+            rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
+            print('SiteID number :', i, 'Fold 1', 'RMSE', rmse1)
+            scores += rmse1 / 2
+            all_models[i].append(model_half_1)
+            gc.collect()
+
+            print("Building model with fold 2")
+            model_half_2 = lgb.train(params, train_set=d_half_2, num_boost_round=1000, valid_sets=watchlist_2,
+                                     verbose_eval=50, early_stopping_rounds=50)
+            y_pred_valid2 = model_half_2.predict(x_t, num_iteration=model_half_2.best_iteration)
+            rmse2 = np.sqrt(mean_squared_error(y_t, y_pred_valid2))
+            print('SiteID number :', i, 'Fold 1', 'oof score is', rmse2)
+            scores += rmse2 / 2
+            all_models[i].append(model_half_2)
+            ytrue = np.concatenate((y_t, y_v), axis=0)
+            ypred = np.concatenate((y_pred_valid2, y_pred_valid1), axis=0)
+            oof0 = mean_squared_error(ytrue, ypred)
+            cv_scores['Site_ID'].append(i)
+            cv_scores['CV_Score'].append(scores)
+            print('Site_ID:', i, 'CV_RMSE:', np.sqrt(oof0))
+            gc.collect()
+        with open('allmodels.p', 'wb') as output_file:
+            pickle.dump(all_models, output_file)
+        print(pd.DataFrame.from_dict(cv_scores))
+
+# class XGBoost(object):
+#
+#     def __init__(self, x_t, y_t, x_v, y_v):
+#         self.x_t = x_t[cols]
+#         self.y_t = y_t
+#         self.x_v = x_v[cols]
+#         self.y_v = y_v
+#         self.train()
+#
+#     def train(self):
+#         print('\n...Training Now...')
+#         # TODO: make a list of arguments to pass?
+#         reg = xgb.XGBRegressor(n_estimators=5000,
+#                                eta=0.005,
+#                                subsample=1,
+#                                tree_method='gpu_hist',
+#                                max_depth=13,
+#                                objective='reg:squarederror',
+#                                reg_lambda=2
+#                                # num_boost_round=1000
+#                                )
+#
+#         hist1 = reg.fit(self.x_t,
+#                         self.y_t,
+#                         eval_set=[(self.x_v, self.y_v)],
+#                         eval_metric='rmse',
+#                         verbose=20,
+#                         early_stopping_rounds=50)
+#
+#         oof1 = hist1.predict(self.x_v)
+#         print('*' * 20)
+#         print('oof score is', mean_squared_error(self.y_v, oof1))
+#         print('*' * 20)
+#         gc.collect()
 
 
-class XGBoost(object):
-
-    def __init__(self, x_t, y_t, x_v, y_v):
-        self.x_t = x_t[cols]
-        self.y_t = y_t
-        self.x_v = x_v[cols]
-        self.y_v = y_v
+class CatBoost(object):
+    def __init__(self, x_t, x_v):
+        self.x_t = x_t
+        self.x_v = x_v
         self.train()
 
     def train(self):
-        print('\n...Training Now...')
-        # TODO: make a list of arguments to pass?
-        reg = xgb.XGBRegressor(n_estimators=5000,
-                               eta=0.005,
-                               subsample=1,
-                               tree_method='gpu_hist',
-                               max_depth=13,
-                               objective='reg:squarederror',
-                               reg_lambda=2
-                               # num_boost_round=1000
-                               )
 
-        hist1 = reg.fit(self.x_t,
-                        self.y_t,
-                        eval_set=[(self.x_v, self.y_v)],
-                        eval_metric='rmse',
-                        verbose=20,
-                        early_stopping_rounds=50)
+        for i in tqdm(range(4)):
+            x_t = self.x_t['meter' == i]
+            y_t = x_t.meter_reading
+            x_v = self.x_v['meter' == i]
+            y_v = x_v.meter_reading
+            model_filename = 'catboost'
+            all_models = []
 
-        oof1 = hist1.predict(self.x_v)
-        print('*' * 20)
-        print('oof score is', mean_squared_error(self.y_v, oof1))
-        print('*' * 20)
-        gc.collect()
+            cat_params = {
+                'n_estimators': 2000,
+                'learning_rate': 0.1,
+                'eval_metric': 'RMSE',
+                'loss_function': 'RMSE',
+                'metric_period': 10,
+                'task_type': 'GPU',
+                'early_stopping_rounds': 100,
+                'depth': 8,
+            }
+
+            estimator = CatBoostRegressor(**cat_params)
+            estimator.fit(
+                x_t, y_t,
+                eval_set=[x_v, y_v],
+                cat_features=category_cols,
+                use_best_model=True,
+                verbose=True)
+
+            estimator.save_model(model_filename + '.bin')
+            all_models.append(model_filename + '.bin')
+
+            del estimator
+            gc.collect()
 
 
 class Keras(object):
 
     def __init__(self, x_t, y_t, x_v, y_v, **kwargs):
-        self.x_t = {col: x_t[col] for col in cols}
-        self.x_v = {col: x_v[col] for col in cols}
+        self.x_t = x_t
+        self.x_v = x_v
         self.y_t = y_t
         self.y_v = y_v
 
