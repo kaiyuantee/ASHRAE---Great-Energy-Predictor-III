@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import os
 import keras.backend as K
 from keras import Input, Model, models
 from keras.layers import Dense, Dropout, Embedding, concatenate, Flatten, BatchNormalization
@@ -7,28 +8,61 @@ from keras.optimizers import Adam
 from keras.losses import MSE
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
-import xgboost as xgb
 from catboost import CatBoostRegressor
+from sklearn.model_selection import KFold
 import gc
 import pickle
 from tqdm import tqdm
-category_cols = [
-    "building_id",
-    "primary_use",
-    "meter",
-    "weekday",
-    "hour",
-    'is_holiday'
-]
+from .utils import OUTPUT_ROOT
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+category_cols = ["building_id",
+                 "primary_use",
+                 "meter",
+                 "weekday",
+                 "hour",
+                 'is_holiday']
+
+
+def columns(df):
+    all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading"]]
+    return df[all_features]
 
 
 class LightGBM(object):
 
-    def __init__(self, x_t, x_v):
+    def __init__(self, x, fold, objective='regression',
+                 boosting='gbdt', metric='rmse',
+                 num_leaves=31, lr=0.05, bagg_freq=5,
+                 bagg_frac=0.95, feature_frac=0.85,
+                 reg_lambda=2, seed=555, num_boost_round=1000,
+                 verbose_eval=50, early_stopping=50):
 
-        self.x_t = x_t
-        self.x_v = x_v
+        self.x = x
+        self.fold = fold
+        self.seed = seed
+        self.objective = objective
+        self.boosting = boosting
+        self.num_leaves = num_leaves
+        self.bagg_freq = bagg_freq
+        self.lr = lr
+        self.bagg_frac = bagg_frac
+        self.feature_frac = feature_frac
+        self.reg_lambda = reg_lambda
+        self.metric = metric
+        self.cat_cols = category_cols
+        self.num_boost_round = num_boost_round
+        self.verbose_eval = verbose_eval
+        self.early_stopping = early_stopping
         self.train()
+
+    def transform(self, i):
+
+        x = self.x[self.x.site_id == i].reset_index(drop=True)
+        y = x.meter_reading
+        x = columns(x)
+
+        return x, y
 
     def train(self):
 
@@ -37,55 +71,52 @@ class LightGBM(object):
 
         for i in tqdm(range(16)):
 
-            x_t = self.x_t['site_id' == i]
-            x_v = self.x_v['site_id' == i]
-            y_t = x_t.meter_reading
-            y_v = x_v.meter_reading
+            x, y = self.transform(i)
             scores = 0
             all_models[i] = []
-            params = {
-                "objective": "regression",
-                "boosting": "gbdt",
-                "num_leaves": 31,
-                "learning_rate": 0.05,
-                "bagging_fraction": 0.95,
-                "feature_fraction": 0.85,
-                "reg_lambda": 2,
-                "metric": "rmse"
-            }
-            d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=category_cols, free_raw_data=False)
-            d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=category_cols, free_raw_data=False)
-            watchlist_1 = [d_half_1, d_half_2]
-            watchlist_2 = [d_half_2, d_half_1]
-            print("Building model in fold 1")
-            model_half_1 = lgb.train(params, train_set=d_half_1, num_boost_round=1000, valid_sets=watchlist_1,
-                                     verbose_eval=50, early_stopping_rounds=50)
-            # predictions
-            y_pred_valid1 = model_half_1.predict(x_v, num_iteration=model_half_1.best_iteration)
-            rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
-            print('SiteID number :', i, 'Fold 1', 'RMSE', rmse1)
-            scores += rmse1 / 2
-            all_models[i].append(model_half_1)
-            gc.collect()
+            y_pred_train_site = np.zeros(x.shape[0])
+            kf = KFold(n_splits=self.fold, random_state=self.seed)
+            for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
 
-            print("Building model with fold 2")
-            model_half_2 = lgb.train(params, train_set=d_half_2, num_boost_round=1000, valid_sets=watchlist_2,
-                                     verbose_eval=50, early_stopping_rounds=50)
-            y_pred_valid2 = model_half_2.predict(x_t, num_iteration=model_half_2.best_iteration)
-            rmse2 = np.sqrt(mean_squared_error(y_t, y_pred_valid2))
-            print('SiteID number :', i, 'Fold 1', 'oof score is', rmse2)
-            scores += rmse2 / 2
-            all_models[i].append(model_half_2)
-            ytrue = np.concatenate((y_t, y_v), axis=0)
-            ypred = np.concatenate((y_pred_valid2, y_pred_valid1), axis=0)
-            oof0 = mean_squared_error(ytrue, ypred)
-            cv_scores['Site_ID'].append(i)
-            cv_scores['CV_Score'].append(scores)
+                x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
+                y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
+                params = {
+                    "objective":        self.objective,
+                    "boosting":         self.boosting,
+                    "num_leaves":       self.num_leaves,
+                    "learning_rate":    self.lr,
+                    'bagging_freq':     self.bagg_freq,
+                    "bagging_fraction": self.bagg_frac,
+                    "feature_fraction": self.feature_frac,
+                    "reg_lambda":       self.reg_lambda,
+                    "metric":           self.metric
+                }
+                d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=self.cat_cols, free_raw_data=False)
+                d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=self.cat_cols, free_raw_data=False)
+                watchlist = [d_half_1, d_half_2]
+                print("Building model in fold 1")
+                model_half_1 = lgb.train(params, train_set=d_half_1,
+                                         num_boost_round=self.num_boost_round,
+                                         valid_sets=watchlist, verbose_eval=self.verbose_eval,
+                                         early_stopping_rounds=self.early_stopping)
+                # predictions
+                y_pred_valid1 = model_half_1.predict(x_v, num_iteration=model_half_1.best_iteration)
+                y_pred_train_site[valid_index] = y_pred_valid1
+                rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
+                print('SiteID number :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
+                scores += rmse1 / 2
+                all_models[i].append(model_half_1)
+                gc.collect()
+
+            oof0 = mean_squared_error(y, y_pred_train_site)
+            cv_scores['site_id'].append(i)
+            cv_scores['cv_score'].append(scores)
             print('Site_ID:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
-        with open('allmodels.p', 'wb') as output_file:
+        with open(OUTPUT_ROOT/'lgbm_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
+
 
 # class XGBoost(object):
 #
@@ -130,7 +161,6 @@ class CatBoost(object):
         self.train()
 
     def train(self):
-
         for i in tqdm(range(4)):
             x_t = self.x_t['meter' == i]
             y_t = x_t.meter_reading
@@ -313,6 +343,36 @@ class Keras(object):
         print('oof is', mean_squared_error(self.y_v, oof))
         gc.collect()
         return keras_model
+
+
+def prediction(df, folds):
+    df_test_sites = []
+
+    for i in tqdm(range(16)):
+
+        print("Preparing test data for site_id", i)
+        df = df[df.site_id == i]
+        row_ids_site = df.row_id
+        df = columns(df)
+        y_pred_test_site = np.zeros(df.shape[0])
+        with open(OUTPUT_ROOT/'lgbm_allmodels.p', 'rb') as input_file:
+            lgbm_allmodels = pickle.load(input_file)
+        print("Predicting for site_id", i)
+
+        for fold in range(folds):
+            model_lgb = lgbm_allmodels[i][fold]
+            y_pred_test_site += model_lgb.predict(df, num_iteration=model_lgb.best_iteration) / folds
+            gc.collect()
+
+        df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
+        df_test_sites.append(df_test_site)
+
+        print("Prediction for site_id", i, "completed")
+        gc.collect()
+
+    submission = pd.concat(df_test_sites)
+    submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
+    return submission.to_csv(OUTPUT_ROOT/"prediction.csv", index=False)
 
 
 def root_mean_squared_error(y_true, y_pred):

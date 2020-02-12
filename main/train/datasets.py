@@ -227,18 +227,12 @@ class Weather(object):
 
     def process(self):
 
-        # self.df['year'] = self.df.timestamp.dt.year - 2016
-        # self.df['month'] = self.df.year * 12 + self.df.timestamp.dt.month
-        # self.df = self.df.loc[(self.df.month > self.x) & (self.df.month <= self.y)]
-        # self.df.drop(['year', 'month'], axis=1, inplace=True)
-        self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure'])
+        self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure'], axis=1, inplace=True)
+        self.df = self.timefeat()
         self.df = self.set_localtime()
         self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
-        # self.df = self.fill_nan_values()
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
-        # self.df = self.beaufort()
-        # self.df['wind_direction'] = self.df['wind_direction'].apply(self.degtocompass)
 
         return self.df
 

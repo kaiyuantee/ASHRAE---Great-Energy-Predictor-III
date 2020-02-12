@@ -4,3 +4,4 @@ Datasets/
 .idea/
 *.json
 __pycache__
+outputdir/

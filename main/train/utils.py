@@ -6,7 +6,8 @@ from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categori
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 from .datasets import Dataframe, Weather
 warnings.filterwarnings('ignore')
-DATA_ROOT = Path(__file__).parent.parent / 'Datasets'
+DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
+OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
 
 
 class Dataset(object):
@@ -29,6 +30,7 @@ class Dataset(object):
                                       index_col=None)
             weatherdf = pd.read_csv(DATA_ROOT / f'weather_{self.option}.csv',
                                     dtype={'site_id': np.int8},
+                                    parse_dates=['timestamp'],
                                     index_col=None)
             df = Dataframe(df, self.option).process()
             weather_df = Weather(weatherdf).process()
