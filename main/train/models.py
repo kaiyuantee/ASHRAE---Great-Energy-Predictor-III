@@ -155,44 +155,104 @@ class LightGBM(object):
 
 
 class CatBoost(object):
-    def __init__(self, x_t, x_v):
-        self.x_t = x_t
-        self.x_v = x_v
+    def __init__(self, x):
+        self.x = x
         self.train()
 
+    # def train(self):
+    #     for i in tqdm(range(4)):
+    #         x_t = self.x_t['meter' == i]
+    #         y_t = x_t.meter_reading
+    #         x_v = self.x_v['meter' == i]
+    #         y_v = x_v.meter_reading
+    #         model_filename = 'catboost'
+    #         all_models = []
+    #
+    #         cat_params = {
+    #             'n_estimators': 2000,
+    #             'learning_rate': 0.1,
+    #             'eval_metric': 'RMSE',
+    #             'loss_function': 'RMSE',
+    #             'metric_period': 10,
+    #             'task_type': 'GPU',
+    #             'early_stopping_rounds': 100,
+    #             'depth': 8,
+    #         }
+    #
+    #         estimator = CatBoostRegressor(**cat_params)
+    #         estimator.fit(
+    #             x_t, y_t,
+    #             eval_set=[x_v, y_v],
+    #             cat_features=category_cols,
+    #             use_best_model=True,
+    #             verbose=True)
+    #
+    #         estimator.save_model(model_filename + '.bin')
+    #         all_models.append(model_filename + '.bin')
+    #
+    #         del estimator
+    #         gc.collect()
+
+    def transform(self, i):
+
+        x = self.x[self.x.meter == i].reset_index(drop=True)
+        y = x.meter_reading
+        x = columns(x)
+
+        return x, y
+
     def train(self):
+
+        all_models = {}
+        cv_scores = {"meter": [], "cv_score": []}
+
         for i in tqdm(range(4)):
-            x_t = self.x_t['meter' == i]
-            y_t = x_t.meter_reading
-            x_v = self.x_v['meter' == i]
-            y_v = x_v.meter_reading
-            model_filename = 'catboost'
-            all_models = []
 
-            cat_params = {
-                'n_estimators': 2000,
-                'learning_rate': 0.1,
-                'eval_metric': 'RMSE',
-                'loss_function': 'RMSE',
-                'metric_period': 10,
-                'task_type': 'GPU',
-                'early_stopping_rounds': 100,
-                'depth': 8,
-            }
+            x, y = self.transform(i)
+            scores = 0
+            all_models[i] = []
+            y_pred_train_site = np.zeros(x.shape[0])
+            kf = KFold(n_splits=2, random_state=555)
+            for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
 
-            estimator = CatBoostRegressor(**cat_params)
-            estimator.fit(
-                x_t, y_t,
-                eval_set=[x_v, y_v],
-                cat_features=category_cols,
-                use_best_model=True,
-                verbose=True)
+                x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
+                y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
+                cat_params = {
+                    'n_estimators': 2000,
+                    'learning_rate': 0.1,
+                    'eval_metric': 'RMSE',
+                    'loss_function': 'RMSE',
+                    'metric_period': 10,
+                    'task_type': 'GPU',
+                    'early_stopping_rounds': 100,
+                    'depth': 8,
+                }
+                print('building some shit now')
+                estimator = CatBoostRegressor(**cat_params)
+                catmodel = estimator.fit(
+                    x_t, y_t,
+                    eval_set=[x_v, y_v],
+                    cat_features=category_cols,
+                    use_best_model=True,
+                    verbose=True)
+                # predictions
 
-            estimator.save_model(model_filename + '.bin')
-            all_models.append(model_filename + '.bin')
+                y_pred_valid1 = catmodel.predict([x_v, y_v])
+                y_pred_train_site[valid_index] = y_pred_valid1
+                rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
+                print('SiteID number :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
+                scores += rmse1 / 2
+                all_models[i].append(catmodel)
+                gc.collect()
 
-            del estimator
+            oof0 = mean_squared_error(y, y_pred_train_site)
+            cv_scores['meter'].append(i)
+            cv_scores['cv_score'].append(scores)
+            print('Meter:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
+        with open(OUTPUT_ROOT/'catboost_allmodels.p', 'wb') as output_file:
+            pickle.dump(all_models, output_file)
+        print(pd.DataFrame.from_dict(cv_scores))
 
 
 class Keras(object):

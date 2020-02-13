@@ -1,9 +1,13 @@
 import pandas as pd
 import numpy as np
 import datetime
+import gc
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import warnings
+from pathlib import Path
+
 warnings.filterwarnings('ignore')
+DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
 
 
 class Dataframe(object):
@@ -16,16 +20,28 @@ class Dataframe(object):
     def process(self):
 
         if self.option == 'train':
+
             self.df['meter_reading'] = np.log1p(self.df['meter_reading'])
             newdf = self.df.query('not (building_id <= 104 & meter == 0 & timestamp <= "2016-05-20")')
             df_group = newdf.groupby('building_id')['meter_reading']
             building_median = df_group.median()  # .astype(np.float16)
             newdf['building_median'] = newdf['building_id'].map(building_median)
+            gc.collect()
+            return newdf
 
         else:
-            return self.df
+            traindf = pd.read_csv(DATA_ROOT / 'train.csv',
+                                  dtype={'building_id': np.int16},
+                                  parse_dates=['timestamp'])
 
-        return newdf
+            traindf['meter_reading'] = np.log1p(traindf['meter_reading'])
+            newdf = traindf.query('not (building_id <= 104 & meter == 0 & timestamp <= "2016-05-20")')
+            df_group = newdf.groupby('building_id')['meter_reading']
+            building_median = df_group.median()  # .astype(np.float16)
+            self.df['building_median'] = newdf['building_id'].map(building_median)
+            del traindf, newdf
+            gc.collect()
+            return self.df
 
 
 class Weather(object):
@@ -149,7 +165,8 @@ class Weather(object):
             dates_range = pd.date_range(start='2015-12-31', end='2019-01-01')
             us_holidays = calendar().holidays(start=dates_range.min(), end=dates_range.max())
             self.df.loc[(self.df.site_id == l) & (self.df.timestamp.isin(us_holidays)), 'is_holiday'] = self.df[
-                (self.df.site_id == l) & (self.df.timestamp.isin(us_holidays))].timestamp.isin(us_holidays).astype(np.uint8)
+                (self.df.site_id == l) & (self.df.timestamp.isin(us_holidays))].timestamp.isin(us_holidays).astype(
+                np.uint8)
         self.df.loc[(self.df['weekday'] == 5) | (self.df['weekday'] == 6), 'is_holiday'] = 1
         self.df['is_holiday'] = self.df.is_holiday.fillna(0)
 
@@ -166,7 +183,8 @@ class Weather(object):
         # self.df = self.df.round({'wind_speed':1,'gust_speed':1})
         self.df = self.df.round({'wind_speed': 1})
         for item in beaufort:
-            self.df.loc[(self.df['wind_speed'] >= item[1]) & (self.df['wind_speed'] < item[2]), 'speed_beaufort'] = item[0]
+            self.df.loc[(self.df['wind_speed'] >= item[1]) & (self.df['wind_speed'] < item[2]), 'speed_beaufort'] = \
+            item[0]
             # self.df.loc[(self.df['gust_speed']>=item[1]) & (self.df['gust_speed']<item[2]), 'gust_beaufort'] = item[0]
 
         return self.df
@@ -174,8 +192,7 @@ class Weather(object):
     def add_lag_feature(self, window=3):
 
         group_df = self.df.groupby('site_id')
-        cols = ['air_temperature', 'cloud_coverage',
-                'dew_temperature', 'precip_depth_1_hr']
+        cols = ['air_temperature', 'dew_temperature']
         rolled = group_df[cols].rolling(window=window, min_periods=0)
         lag_mean = rolled.mean().reset_index().astype(np.float16)
         lag_median = rolled.median().reset_index().astype(np.float16)
@@ -227,7 +244,8 @@ class Weather(object):
 
     def process(self):
 
-        self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure'], axis=1, inplace=True)
+        self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
+                      'precip_depth_1_hr', 'cloud_coverage'], axis=1, inplace=True)
         self.df = self.timefeat()
         self.df = self.set_localtime()
         self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))

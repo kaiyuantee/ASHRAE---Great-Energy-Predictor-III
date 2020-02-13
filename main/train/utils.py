@@ -12,10 +12,8 @@ OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
 
 class Dataset(object):
 
-    def __init__(self, start_month, end_month, option):
+    def __init__(self, option):
 
-        self.startM = start_month
-        self.endM = end_month
         self.option = option
 
     def create_dataset(self):

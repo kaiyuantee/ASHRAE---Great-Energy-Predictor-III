@@ -37,52 +37,52 @@ def main():
 
     df1, df2, df3 = Dataset(args.mode).create_dataset()
 
-    newdf = Preprocess(df1, df2, df3).core()
+    newdf = Preprocess(df1, df2, df3, args.mode).core()
 
-    if (args.mode == 'train') is not (args.mode == 'test'):
-        if args.mode == 'test':
-            prediction(newdf)
+#     if (args.mode == 'train') is not (args.mode == 'test'):
+#         if args.mode == 'test':
+#             prediction(newdf)
 
-        elif args.mode == 'train':
+#         elif args.mode == 'train':
 
-            if args.model == 'lightgbm':
+#             if args.model == 'lightgbm':
 
-                LightGBM(newdf, args.fold)
+#                 LightGBM(newdf, args.fold)
 
-            elif args.model == 'keras':
-                all_models = []
-                configs = dict(dense_dim_1=args.dense_dim_1,
-                               dense_dim_2=args.dense_dim_2,
-                               dense_dim_3=args.dense_dim_3,
-                               dense_dim_4=args.dense_dim_4,
-                               dropout1=args.dropout1,
-                               dropout2=args.dropout2,
-                               dropout3=args.dropout3,
-                               dropout4=args.dropout4,
-                               lr=args.lr,
-                               batch_size=args.batch_size,
-                               epochs=args.epochs,
-                               patience=args.patience,
-                               fold=args.fold)
+#             elif args.model == 'keras':
+#                 all_models = []
+#                 configs = dict(dense_dim_1=args.dense_dim_1,
+#                                dense_dim_2=args.dense_dim_2,
+#                                dense_dim_3=args.dense_dim_3,
+#                                dense_dim_4=args.dense_dim_4,
+#                                dropout1=args.dropout1,
+#                                dropout2=args.dropout2,
+#                                dropout3=args.dropout3,
+#                                dropout4=args.dropout4,
+#                                lr=args.lr,
+#                                batch_size=args.batch_size,
+#                                epochs=args.epochs,
+#                                patience=args.patience,
+#                                fold=args.fold)
 
-                for i in range(args.fold):
-                    if i % 2 == 0:
-                        xt, yt, xv, yv = xv, yv, xt, yt
-                    else:
-                        xt, yt, xv, yv = xt, yt, xv, yv
-                    all_models.append(Keras(xt, yt, xv, yv, **configs))
+#                 for i in range(args.fold):
+#                     if i % 2 == 0:
+#                         xt, yt, xv, yv = xv, yv, xt, yt
+#                     else:
+#                         xt, yt, xv, yv = xt, yt, xv, yv
+#                     all_models.append(Keras(xt, yt, xv, yv, **configs))
 
-            elif args.model == 'catboost':
-                all_models = []
-                for i in range(args.fold):
-                    if i % 2 == 0:
-                        xt, yt, xv, yv = xv, yv, xt, yt
-                    else:
-                        xt, yt, xv, yv = xt, yt, xv, yv
-                        all_models.append(CatBoost(xt, yt, xv, yv))
-        else:
-            print('Choose only train or test mode')
-            exit()
+#             elif args.model == 'catboost':
+#                 all_models = []
+#                 for i in range(args.fold):
+#                     if i % 2 == 0:
+#                         xt, yt, xv, yv = xv, yv, xt, yt
+#                     else:
+#                         xt, yt, xv, yv = xt, yt, xv, yv
+#                         all_models.append(CatBoost(xt, yt, xv, yv))
+#         else:
+#             print('Choose only train or test mode')
+#             exit()
 
 
 if __name__ == '__main__':
