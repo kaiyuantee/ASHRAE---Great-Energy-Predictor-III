@@ -14,6 +14,7 @@ import gc
 import pickle
 from tqdm import tqdm
 from .utils import OUTPUT_ROOT
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 category_cols = ["building_id",
@@ -25,7 +26,12 @@ category_cols = ["building_id",
 
 
 def columns(df):
-    all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading"]]
+    all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading", "row_id"]]
+    return df[all_features]
+
+
+def kerascolumns(df):
+    all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading", "row_id"]]
     return df[all_features]
 
 
@@ -77,19 +83,18 @@ class LightGBM(object):
             y_pred_train_site = np.zeros(x.shape[0])
             kf = KFold(n_splits=self.fold, random_state=self.seed)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
-
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 params = {
-                    "objective":        self.objective,
-                    "boosting":         self.boosting,
-                    "num_leaves":       self.num_leaves,
-                    "learning_rate":    self.lr,
-                    'bagging_freq':     self.bagg_freq,
+                    "objective": self.objective,
+                    "boosting": self.boosting,
+                    "num_leaves": self.num_leaves,
+                    "learning_rate": self.lr,
+                    'bagging_freq': self.bagg_freq,
                     "bagging_fraction": self.bagg_frac,
                     "feature_fraction": self.feature_frac,
-                    "reg_lambda":       self.reg_lambda,
-                    "metric":           self.metric
+                    "reg_lambda": self.reg_lambda,
+                    "metric": self.metric
                 }
                 d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=self.cat_cols, free_raw_data=False)
                 d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=self.cat_cols, free_raw_data=False)
@@ -113,7 +118,7 @@ class LightGBM(object):
             cv_scores['cv_score'].append(scores)
             print('Site_ID:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
-        with open(OUTPUT_ROOT/'lgbm_allmodels.p', 'wb') as output_file:
+        with open(OUTPUT_ROOT / 'lgbm_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
 
@@ -214,7 +219,6 @@ class CatBoost(object):
             y_pred_train_site = np.zeros(x.shape[0])
             kf = KFold(n_splits=2, random_state=555)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
-
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 cat_params = {
@@ -250,18 +254,31 @@ class CatBoost(object):
             cv_scores['cv_score'].append(scores)
             print('Meter:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
-        with open(OUTPUT_ROOT/'catboost_allmodels.p', 'wb') as output_file:
+        with open(OUTPUT_ROOT / 'catboost_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
 
 
 class Keras(object):
 
-    def __init__(self, x_t, y_t, x_v, y_v, **kwargs):
-        self.x_t = x_t
-        self.x_v = x_v
-        self.y_t = y_t
-        self.y_v = y_v
+    def __init__(self, x, dense_dim_1=64, dense_dim_2=32,
+                 dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
+                 dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.005,
+                 batch_size=1024, epochs=10, patience=2, fold=2):
+        self.x = x
+        self.dense_dim_1 = dense_dim_1
+        self.dense_dim_2 = dense_dim_2
+        self.dense_dim_3 = dense_dim_3
+        self.dense_dim_4 = dense_dim_4
+        self.dropout1 = dropout1
+        self.dropout2 = dropout2
+        self.dropout3 = dropout3
+        self.dropout4 = dropout4
+        self.lr = lr
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.patience = patience
+        self.fold = fold
 
         keys = ['dense_dim_1', 'dense_dim_2',
                 'dense_dim_3', 'dense_dim_4',
@@ -270,8 +287,8 @@ class Keras(object):
                 'lr', 'batch_size', 'epochs',
                 'patience', 'fold']
 
-        for key in keys:
-            setattr(self, key, kwargs.get(key))
+        # for key in keys:
+        #     setattr(self, key, kwargs.get(key))
 
         self.train()
 
@@ -282,19 +299,35 @@ class Keras(object):
         meter = Input(shape=[1], name="meter")
         primary_use = Input(shape=[1], name="primary_use")
         square_feet = Input(shape=[1], name="square_feet")
-        year_built = Input(shape=[1], name="year_built")
         air_temperature = Input(shape=[1], name="air_temperature")
         cloud_coverage = Input(shape=[1], name="cloud_coverage")
         dew_temperature = Input(shape=[1], name="dew_temperature")
         hour = Input(shape=[1], name="hour")
-        precip = Input(shape=[1], name="precip_depth_1_hr")
-        wind_direction = Input(shape=[1], name="wind_direction")
-        wind_speed = Input(shape=[1], name="wind_speed")
         weekday = Input(shape=[1], name="weekday")
-        beaufort_scale = Input(shape=[1], name="speed_beaufort")
         isholiday = Input(shape=[1], name='is_holiday')
-        pressure = Input(shape=[1], name='sea_level_pressure')
         buildingmedian = Input(shape=[1], name='building_median')
+        air_temperature_mean_lag18 = Input(shape=[1], name='air_temperature_mean_lag18')
+        air_temperature_max_lag18 = Input(shape=[1], name='air_temperature_max_lag18')
+        air_temperature_min_lag18 = Input(shape=[1], name='air_temperature_min_lag18')
+        air_temperature_median_lag18 = Input(shape=[1], name='air_temperature_median_lag18')
+        air_temperature_std_lag18 = Input(shape=[1], name='air_temperature_std_lag18')
+        air_temperature_skew_lag18 = Input(shape=[1], name='air_temperature_skew_lag18')
+        dew_temperature_mean_lag18 = Input(shape=[1], name='dew_temperature_mean_lag18')
+        dew_temperature_max_lag18 = Input(shape=[1], name='dew_temperature_max_lag18')
+        dew_temperature_min_lag18 = Input(shape=[1], name='dew_temperature_min_lag18')
+        dew_temperature_median_lag18 = Input(shape=[1], name='dew_temperature_median_lag18')
+        dew_temperature_std_lag18 = Input(shape=[1], name='dew_temperature_std_lag18')
+        dew_temperature_skew_lag18 = Input(shape=[1], name='dew_temperature_skew_lag18')
+        cloud_coverage_mean_lag18 = Input(shape=[1], name='cloud_coverage_mean_lag18')
+        cloud_coverage_max_lag18 = Input(shape=[1], name='cloud_coverage_max_lag18')
+        cloud_coverage_min_lag18 = Input(shape=[1], name='cloud_coverage_min_lag18')
+        cloud_coverage_median_lag18 = Input(shape=[1], name='cloud_coverage_median_lag18')
+        cloud_coverage_std_lag18 = Input(shape=[1], name='cloud_coverage_std_lag18')
+        cloud_coverage_skew_lag18 = Input(shape=[1], name='cloud_coverage_skew_lag18')
+        mean_building_meter_x = Input(shape=[1], name='mean_building_meter_x')
+        mean_building_meter_y = Input(shape=[1], name='mean_building_meter_y')
+        median_building_meter_x = Input(shape=[1], name='median_building_meter_x')
+        median_building_meter_y = Input(shape=[1], name='median_building_meter_y')
 
         # Embeddings layers
         emb_site_id = Embedding(16, 2)(site_id)
@@ -304,7 +337,6 @@ class Keras(object):
         emb_hour = Embedding(24, 3)(hour)
         emb_weekday = Embedding(7, 2)(weekday)
         emb_isholiday = Embedding(2, 2)(isholiday)
-        emb_wind_direction = Embedding(16, 2)(wind_direction)
 
         concat_emb = concatenate([
             Flatten()(emb_site_id)
@@ -314,7 +346,6 @@ class Keras(object):
             , Flatten()(emb_hour)
             , Flatten()(emb_weekday)
             , Flatten()(emb_isholiday)
-            , Flatten()(emb_wind_direction)
         ])
 
         categ = Dropout(self.dropout1)(Dense(self.dense_dim_1, activation='relu')(concat_emb))
@@ -325,16 +356,32 @@ class Keras(object):
         main_l = concatenate([
             categ
             , square_feet
-            , year_built
             , air_temperature
             , cloud_coverage
             , dew_temperature
-            , precip
-            , wind_direction
-            , wind_speed
-            , beaufort_scale
-            , pressure
             , buildingmedian
+            , air_temperature_mean_lag18
+            , air_temperature_max_lag18
+            , air_temperature_min_lag18
+            , air_temperature_median_lag18
+            , air_temperature_std_lag18
+            , air_temperature_skew_lag18
+            , dew_temperature_mean_lag18
+            , dew_temperature_max_lag18
+            , dew_temperature_min_lag18
+            , dew_temperature_median_lag18
+            , dew_temperature_std_lag18
+            , dew_temperature_skew_lag18
+            , cloud_coverage_mean_lag18
+            , cloud_coverage_max_lag18
+            , cloud_coverage_min_lag18
+            , cloud_coverage_median_lag18
+            , cloud_coverage_std_lag18
+            , cloud_coverage_skew_lag18
+            , mean_building_meter_x
+            , mean_building_meter_y
+            , median_building_meter_x
+            , median_building_meter_y
         ])
 
         main_l = Dropout(self.dropout3)(Dense(self.dense_dim_3, activation='relu')(main_l))
@@ -350,19 +397,36 @@ class Keras(object):
             meter,
             primary_use,
             square_feet,
-            year_built,
             air_temperature,
             cloud_coverage,
             dew_temperature,
             hour,
             weekday,
-            precip,
-            wind_direction,
-            wind_speed,
-            beaufort_scale,
             isholiday,
-            pressure,
-            buildingmedian], output)
+            buildingmedian,
+            air_temperature_mean_lag18,
+            air_temperature_max_lag18,
+            air_temperature_min_lag18,
+            air_temperature_median_lag18,
+            air_temperature_std_lag18,
+            air_temperature_skew_lag18,
+            dew_temperature_mean_lag18,
+            dew_temperature_max_lag18,
+            dew_temperature_min_lag18,
+            dew_temperature_median_lag18,
+            dew_temperature_std_lag18,
+            dew_temperature_skew_lag18,
+            cloud_coverage_mean_lag18,
+            cloud_coverage_max_lag18,
+            cloud_coverage_min_lag18,
+            cloud_coverage_median_lag18,
+            cloud_coverage_std_lag18,
+            cloud_coverage_skew_lag18,
+            mean_building_meter_x,
+            mean_building_meter_y,
+            median_building_meter_x,
+            median_building_meter_y
+        ], output)
 
         model.compile(optimizer=Adam(lr=self.lr, beta_1=0.9, beta_2=0.999, amsgrad=False),
                       loss=MSE,
@@ -394,45 +458,78 @@ class Keras(object):
     def train(self):
         model = self.body()
         cb1, cb2, cb3 = self.callbacks()
-        hist = model.fit(self.x_t, self.y_t, batch_size=self.batch_size, epochs=self.epochs,
-                         validation_data=(self.x_v, self.y_v), verbose=1,
-                         callbacks=[cb1, cb2, cb3])
-        keras_model = models.load_model("model_" + str(self.fold) + ".hdf5",
-                                        custom_objects={'root_mean_squared_error': root_mean_squared_error})
-        oof = keras_model.predict(self.x_v)
-        print('oof is', mean_squared_error(self.y_v, oof))
-        gc.collect()
-        return keras_model
+        kf = KFold(n_splits=self.fold)
+        all_models = {}
+        cv_scores = {'meter': [], 'buidling_id': [], 'cv_score': []}
+        for i in tqdm(range(4)):
+            xx = self.x[self.x.meter == i]
+            for build_id in tqdm(xx.building_id.unique()):
+                x_t = xx[xx.building_id == build_id]
+                y_t = x_t.meter_reading
+                x_t = kerascolumns(x_t)
+                ypred_all = np.zeros(x_t.shape[0])
+                scores = 0
+                for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
+                    x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
+                    y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
+                    x_train = {col: np.array(x_train[col]) for col in x_train.columns}
+                    x_valid = {col: np.array(x_valid[col]) for col in x_valid.columns}
+                    hist = model.fit(x_train, y_train,
+                                     batch_size=self.batch_size,
+                                     epochs=self.epochs,
+                                     validation_data=(x_valid, y_valid),
+                                     verbose=1,
+                                     callbacks=[cb1, cb2, cb3])
+                    keras_model = models.load_model(OUTPUT_ROOT/'keras'/f'{i}_{build_id}_{fold}.hdf5',
+                                                    custom_objects={'root_mean_squared_error': root_mean_squared_error})
+                    y_pred = keras_model.predict(x_valid)
+                    ypred_all[valid_idx] = y_pred
+                    rmse1 = np.sqrt(mean_squared_error(y_train, y_pred))
+                    print('Meter :', i, 'Building_ID:', build_id, 'Fold:', fold + 1, 'RMSE', rmse1)
+                    scores += rmse1 / 2
+                    all_models[i][build_id].append(keras_model)
+                    gc.collect()
+
+                oof0 = mean_squared_error(y_t, ypred_all)
+                cv_scores['meter'].append(i)
+                cv_scores['buidling_id'].append(build_id)
+                cv_scores['cv_score'].append(scores)
+                print('Meter:', i, 'Building_ID:', build_id, 'CV_RMSE:', np.sqrt(oof0))
+                gc.collect()
+        with open(OUTPUT_ROOT / 'keras_allmodels.p', 'wb') as output_file:
+            pickle.dump(all_models, output_file)
+        print(pd.DataFrame.from_dict(cv_scores))
 
 
-def prediction(df, folds):
-    df_test_sites = []
+def prediction(datadf, model, folds):
+    if model == 'lightgbm':
+        df_test_sites = []
 
-    for i in tqdm(range(16)):
+        for i in tqdm(range(16)):
 
-        print("Preparing test data for site_id", i)
-        df = df[df.site_id == i]
-        row_ids_site = df.row_id
-        df = columns(df)
-        y_pred_test_site = np.zeros(df.shape[0])
-        with open(OUTPUT_ROOT/'lgbm_allmodels.p', 'rb') as input_file:
-            lgbm_allmodels = pickle.load(input_file)
-        print("Predicting for site_id", i)
+            print("Preparing test data for site_id", i)
+            df = datadf[datadf.site_id == i]
+            row_ids_site = df.row_id
+            df = columns(df)
+            y_pred_test_site = np.zeros(df.shape[0])
+            with open(OUTPUT_ROOT / 'lgbm_allmodels.p', 'rb') as input_file:
+                lgbm_allmodels = pickle.load(input_file)
+            print("Predicting for site_id", i)
 
-        for fold in range(folds):
-            model_lgb = lgbm_allmodels[i][fold]
-            y_pred_test_site += model_lgb.predict(df, num_iteration=model_lgb.best_iteration) / folds
+            for fold in range(folds):
+                model_lgb = lgbm_allmodels[i][fold]
+                y_pred_test_site += model_lgb.predict(df, num_iteration=model_lgb.best_iteration) / folds
+                gc.collect()
+
+            df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
+            df_test_sites.append(df_test_site)
+
+            print("Prediction for site_id", i, "completed")
             gc.collect()
 
-        df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
-        df_test_sites.append(df_test_site)
-
-        print("Prediction for site_id", i, "completed")
-        gc.collect()
-
-    submission = pd.concat(df_test_sites)
-    submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
-    return submission.to_csv(OUTPUT_ROOT/"prediction.csv", index=False)
+        submission = pd.concat(df_test_sites)
+        submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
+        return submission.to_csv(OUTPUT_ROOT / "lgbm_prediction.csv", index=False)
 
 
 def root_mean_squared_error(y_true, y_pred):
@@ -441,5 +538,4 @@ def root_mean_squared_error(y_true, y_pred):
 
 def mean_squared_error(y_true, y_pred):
     return K.mean(K.square(y_pred - y_true), axis=0)
-
 

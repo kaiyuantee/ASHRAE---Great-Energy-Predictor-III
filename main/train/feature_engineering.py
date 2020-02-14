@@ -37,14 +37,12 @@ class Preprocess(object):
             newdf1, newdf2 = self.new_feat(traindf)
             del traindf
             gc.collect()
-
-        elif self.option == 'train':
-            newdf1, newdf2 = self.new_feat(self.df)
-
         self.build.drop(['year_built', 'floor_count'], axis=1, inplace=True)
         self.df = self.df.merge(self.build, on='building_id', how='left')
         self.df = self.df.merge(self.weather, on=['site_id', 'timestamp'], how='left')
         self.df = memory_reducer(self.df)
+        if self.option == 'train':
+            newdf1, newdf2 = self.new_feat(self.df)
         self.df['square_feet'] = np.log1p(self.df['square_feet'])
         self.df['primary_use'] = le.fit_transform(self.df.primary_use)
         self.df = self.df.merge(newdf1, on=["building_id", "meter"])

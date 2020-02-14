@@ -192,7 +192,7 @@ class Weather(object):
     def add_lag_feature(self, window=3):
 
         group_df = self.df.groupby('site_id')
-        cols = ['air_temperature', 'dew_temperature']
+        cols = ['air_temperature', 'dew_temperature', 'cloud_coverage']
         rolled = group_df[cols].rolling(window=window, min_periods=0)
         lag_mean = rolled.mean().reset_index().astype(np.float16)
         lag_median = rolled.median().reset_index().astype(np.float16)
@@ -245,7 +245,7 @@ class Weather(object):
     def process(self):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
-                      'precip_depth_1_hr', 'cloud_coverage'], axis=1, inplace=True)
+                      'precip_depth_1_hr'], axis=1, inplace=True)
         self.df = self.timefeat()
         self.df = self.set_localtime()
         self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))

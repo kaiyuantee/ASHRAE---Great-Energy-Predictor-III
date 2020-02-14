@@ -8,6 +8,7 @@ from .datasets import Dataframe, Weather
 warnings.filterwarnings('ignore')
 DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
 OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
+KERAS_ROOT = OUTPUT_ROOT / 'keras'
 
 
 class Dataset(object):
