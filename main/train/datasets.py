@@ -78,7 +78,6 @@ class Weather(object):
         self.df["month"] = self.df["timestamp"].dt.month
         self.df["hour"] = self.df['timestamp'].dt.hour
         self.df["weekday"] = self.df["timestamp"].dt.weekday
-        self.df["weekofday"] = self.df["timestamp"].dt.weekofday
 
         # Reset Index for Fast Update
         self.df = self.df.set_index(['site_id', 'day', 'month'])
@@ -100,33 +99,33 @@ class Weather(object):
                                               columns=["dew_temperature"])
         self.df.update(dew_temperature_filler, overwrite=False)
 
-        # sea level pressure
-        # Step 1
-        sea_level_filler = self.df.groupby(['site_id', 'day', 'month'])['sea_level_pressure'].mean()
-        # Step 2
-        sea_level_filler = pd.DataFrame(sea_level_filler.fillna(method='ffill'), columns=['sea_level_pressure'])
-        self.df.update(sea_level_filler, overwrite=False)
-
-        # wind direction
-        wind_direction_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_direction'].mean(),
-                                             columns=['wind_direction'])
-        self.df.update(wind_direction_filler, overwrite=False)
-
-        # wind speed
-        wind_speed_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_speed'].mean(),
-                                         columns=['wind_speed'])
-        self.df.update(wind_speed_filler, overwrite=False)
-
-        # precipitation depth 1 hour
-        # Step 1
-        precip_depth_filler = self.df.groupby(['site_id', 'day', 'month'])['precip_depth_1_hr'].mean()
-        # Step 2
-        precip_depth_filler = pd.DataFrame(precip_depth_filler.fillna(method='ffill'), columns=['precip_depth_1_hr'])
-        self.df.update(precip_depth_filler, overwrite=False)
+        # # sea level pressure
+        # # Step 1
+        # sea_level_filler = self.df.groupby(['site_id', 'day', 'month'])['sea_level_pressure'].mean()
+        # # Step 2
+        # sea_level_filler = pd.DataFrame(sea_level_filler.fillna(method='ffill'), columns=['sea_level_pressure'])
+        # self.df.update(sea_level_filler, overwrite=False)
+        #
+        # # wind direction
+        # wind_direction_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_direction'].mean(),
+        #                                      columns=['wind_direction'])
+        # self.df.update(wind_direction_filler, overwrite=False)
+        #
+        # # wind speed
+        # wind_speed_filler = pd.DataFrame(self.df.groupby(['site_id', 'day', 'month'])['wind_speed'].mean(),
+        #                                  columns=['wind_speed'])
+        # self.df.update(wind_speed_filler, overwrite=False)
+        #
+        # # precipitation depth 1 hour
+        # # Step 1
+        # precip_depth_filler = self.df.groupby(['site_id', 'day', 'month'])['precip_depth_1_hr'].mean()
+        # # Step 2
+        # precip_depth_filler = pd.DataFrame(precip_depth_filler.fillna(method='ffill'), columns=['precip_depth_1_hr'])
+        # self.df.update(precip_depth_filler, overwrite=False)
 
         # reset index and drop useless cols
         self.df.reset_index(inplace=True)
-        self.df.drop(['day', 'week'], axis=1, inplace=True)
+        self.df.drop(['day', 'week', 'month'], axis=1, inplace=True)
 
         return self.df
 
