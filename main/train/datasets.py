@@ -184,8 +184,7 @@ class Weather(object):
         # self.df = self.df.round({'wind_speed':1,'gust_speed':1})
         self.df = self.df.round({'wind_speed': 1})
         for item in beaufort:
-            self.df.loc[(self.df['wind_speed'] >= item[1]) & (self.df['wind_speed'] < item[2]), 'speed_beaufort'] = \
-            item[0]
+            self.df.loc[(self.df['wind_speed'] >= item[1]) & (self.df['wind_speed'] < item[2]), 'speed_beaufort'] = item[0]
             # self.df.loc[(self.df['gust_speed']>=item[1]) & (self.df['gust_speed']<item[2]), 'gust_beaufort'] = item[0]
 
         return self.df
