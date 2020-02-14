@@ -298,6 +298,7 @@ class Keras(object):
         building_id = Input(shape=[1], name="building_id")
         meter = Input(shape=[1], name="meter")
         primary_use = Input(shape=[1], name="primary_use")
+        year_built = Input(shape=[1], name='year_built')
         square_feet = Input(shape=[1], name="square_feet")
         air_temperature = Input(shape=[1], name="air_temperature")
         cloud_coverage = Input(shape=[1], name="cloud_coverage")
@@ -355,6 +356,7 @@ class Keras(object):
         # main layer
         main_l = concatenate([
             categ
+            , year_built
             , square_feet
             , air_temperature
             , cloud_coverage
@@ -396,6 +398,7 @@ class Keras(object):
             building_id,
             meter,
             primary_use,
+            year_built,
             square_feet,
             air_temperature,
             cloud_coverage,
@@ -464,25 +467,8 @@ class Keras(object):
         all_models = []
         ypred_all = np.zeros(x_t.shape[0])
         scores = 0
-        for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
-            early_stopping = EarlyStopping(patience=self.patience,
-                                           monitor='val_root_mean_squared_error',
-                                           verbose=1)
-
-            model_checkpoint = ModelCheckpoint(f'model_{fold}.hdf5',
-                                               save_best_only=True,
-                                               verbose=1,
-                                               monitor='val_root_mean_squared_error',
-                                               mode='min')
-
-            reducer = ReduceLROnPlateau(monitor='val_root_mean_squared_error',
-                                        factor=0.5,
-                                        patience=1,
-                                        verbose=1,
-                                        mode='auto',
-                                        min_delta=0.0001,
-                                        cooldown=0,
-                                        min_lr=0)
+        for foldz, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
+            cb1, cb2, cb3 = self.callbacks(foldz)
             x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
             y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
             x_train = {col: np.array(x_train[col]) for col in x_train.columns}
@@ -493,8 +479,8 @@ class Keras(object):
                              epochs=self.epochs,
                              validation_data=(x_valid, y_valid),
                              verbose=1,
-                             callbacks=[early_stopping, model_checkpoint, reducer])
-            keras_model = models.load_model(OUTPUT_ROOT / f'model_{fold}.hdf5',
+                             callbacks=[cb1, cb2, cb3])
+            keras_model = models.load_model(OUTPUT_ROOT / f'model_{foldz}.hdf5',
                                             custom_objects={'root_mean_squared_error': root_mean_squared_error})
             y_pred = keras_model.predict(x_valid)
             ypred_all[valid_idx] = y_pred

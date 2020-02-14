@@ -10,10 +10,11 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 import lightgbm as lgb
 from catboost import CatBoostRegressor
 from sklearn.model_selection import KFold
+from sklearn.metrics import mean_squared_error
 import gc
 import pickle
 from tqdm import tqdm
-from .utils import OUTPUT_ROOT
+from .utils import OUTPUT_ROOT, KERAS_ROOT
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -41,12 +42,10 @@ class LightGBM(object):
                  boosting='gbdt', metric='rmse',
                  num_leaves=31, lr=0.05, bagg_freq=5,
                  bagg_frac=0.95, feature_frac=0.85,
-                 reg_lambda=2, seed=555, num_boost_round=1000,
+                 reg_lambda=2, num_boost_round=1000,
                  verbose_eval=50, early_stopping=50):
 
         self.x = x
-        self.fold = fold
-        self.seed = seed
         self.objective = objective
         self.boosting = boosting
         self.num_leaves = num_leaves
@@ -81,7 +80,7 @@ class LightGBM(object):
             scores = 0
             all_models[i] = []
             y_pred_train_site = np.zeros(x.shape[0])
-            kf = KFold(n_splits=self.fold, random_state=self.seed)
+            kf = KFold(n_splits=self.fold, shuffle=False)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
@@ -123,80 +122,11 @@ class LightGBM(object):
         print(pd.DataFrame.from_dict(cv_scores))
 
 
-# class XGBoost(object):
-#
-#     def __init__(self, x_t, y_t, x_v, y_v):
-#         self.x_t = x_t[cols]
-#         self.y_t = y_t
-#         self.x_v = x_v[cols]
-#         self.y_v = y_v
-#         self.train()
-#
-#     def train(self):
-#         print('\n...Training Now...')
-#         # TODO: make a list of arguments to pass?
-#         reg = xgb.XGBRegressor(n_estimators=5000,
-#                                eta=0.005,
-#                                subsample=1,
-#                                tree_method='gpu_hist',
-#                                max_depth=13,
-#                                objective='reg:squarederror',
-#                                reg_lambda=2
-#                                # num_boost_round=1000
-#                                )
-#
-#         hist1 = reg.fit(self.x_t,
-#                         self.y_t,
-#                         eval_set=[(self.x_v, self.y_v)],
-#                         eval_metric='rmse',
-#                         verbose=20,
-#                         early_stopping_rounds=50)
-#
-#         oof1 = hist1.predict(self.x_v)
-#         print('*' * 20)
-#         print('oof score is', mean_squared_error(self.y_v, oof1))
-#         print('*' * 20)
-#         gc.collect()
-
-
 class CatBoost(object):
-    def __init__(self, x):
+    def __init__(self, x, fold):
         self.x = x
+        self.fold = fold
         self.train()
-
-    # def train(self):
-    #     for i in tqdm(range(4)):
-    #         x_t = self.x_t['meter' == i]
-    #         y_t = x_t.meter_reading
-    #         x_v = self.x_v['meter' == i]
-    #         y_v = x_v.meter_reading
-    #         model_filename = 'catboost'
-    #         all_models = []
-    #
-    #         cat_params = {
-    #             'n_estimators': 2000,
-    #             'learning_rate': 0.1,
-    #             'eval_metric': 'RMSE',
-    #             'loss_function': 'RMSE',
-    #             'metric_period': 10,
-    #             'task_type': 'GPU',
-    #             'early_stopping_rounds': 100,
-    #             'depth': 8,
-    #         }
-    #
-    #         estimator = CatBoostRegressor(**cat_params)
-    #         estimator.fit(
-    #             x_t, y_t,
-    #             eval_set=[x_v, y_v],
-    #             cat_features=category_cols,
-    #             use_best_model=True,
-    #             verbose=True)
-    #
-    #         estimator.save_model(model_filename + '.bin')
-    #         all_models.append(model_filename + '.bin')
-    #
-    #         del estimator
-    #         gc.collect()
 
     def transform(self, i):
 
@@ -217,7 +147,7 @@ class CatBoost(object):
             scores = 0
             all_models[i] = []
             y_pred_train_site = np.zeros(x.shape[0])
-            kf = KFold(n_splits=2, random_state=555)
+            kf = KFold(n_splits=self.fold, shuffle=False)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
@@ -264,7 +194,7 @@ class Keras(object):
     def __init__(self, x, dense_dim_1=64, dense_dim_2=32,
                  dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
                  dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.005,
-                 batch_size=1024, epochs=10, patience=2, fold=2):
+                 batch_size=1024, epochs=10, patience=3, fold=2):
         self.x = x
         self.dense_dim_1 = dense_dim_1
         self.dense_dim_2 = dense_dim_2
@@ -433,12 +363,12 @@ class Keras(object):
                       metrics=[root_mean_squared_error])
         return model
 
-    def callbacks(self):
+    def callbacks(self, fold):
         early_stopping = EarlyStopping(patience=self.patience,
                                        monitor='val_root_mean_squared_error',
                                        verbose=1)
 
-        model_checkpoint = ModelCheckpoint("model_" + str(self.fold) + ".hdf5",
+        model_checkpoint = ModelCheckpoint(os.path.join(KERAS_ROOT, f"model_{fold}.hdf5"),
                                            save_best_only=True,
                                            verbose=1,
                                            monitor='val_root_mean_squared_error',
@@ -457,45 +387,41 @@ class Keras(object):
 
     def train(self):
         model = self.body()
-        cb1, cb2, cb3 = self.callbacks()
         kf = KFold(n_splits=self.fold)
         all_models = {}
-        cv_scores = {'meter': [], 'buidling_id': [], 'cv_score': []}
-        for i in tqdm(range(4)):
-            xx = self.x[self.x.meter == i]
-            for build_id in tqdm(xx.building_id.unique()):
-                x_t = xx[xx.building_id == build_id]
-                y_t = x_t.meter_reading
-                x_t = kerascolumns(x_t)
-                ypred_all = np.zeros(x_t.shape[0])
-                scores = 0
-                for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
-                    x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
-                    y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
-                    x_train = {col: np.array(x_train[col]) for col in x_train.columns}
-                    x_valid = {col: np.array(x_valid[col]) for col in x_valid.columns}
-                    hist = model.fit(x_train, y_train,
-                                     batch_size=self.batch_size,
-                                     epochs=self.epochs,
-                                     validation_data=(x_valid, y_valid),
-                                     verbose=1,
-                                     callbacks=[cb1, cb2, cb3])
-                    keras_model = models.load_model(OUTPUT_ROOT/'keras'/f'{i}_{build_id}_{fold}.hdf5',
-                                                    custom_objects={'root_mean_squared_error': root_mean_squared_error})
-                    y_pred = keras_model.predict(x_valid)
-                    ypred_all[valid_idx] = y_pred
-                    rmse1 = np.sqrt(mean_squared_error(y_train, y_pred))
-                    print('Meter :', i, 'Building_ID:', build_id, 'Fold:', fold + 1, 'RMSE', rmse1)
-                    scores += rmse1 / 2
-                    all_models[i][build_id].append(keras_model)
-                    gc.collect()
+        cv_scores = {'Fold': [], 'cv_score': []}
+        x_t = self.x
+        y_t = x_t.meter_reading
+        x_t = kerascolumns(x_t)
+        ypred_all = np.zeros(x_t.shape[0])
+        scores = 0
+        for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
+            all_models[fold] = []
+            cb1, cb2, cb3 = self.callbacks(fold)
+            x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
+            y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
+            x_train = {col: np.array(x_train[col]) for col in x_train.columns}
+            x_valid = {col: np.array(x_valid[col]) for col in x_valid.columns}
+            hist = model.fit(x_train, y_train,
+                             batch_size=self.batch_size,
+                             epochs=self.epochs,
+                             validation_data=(x_valid, y_valid),
+                             verbose=1,
+                             callbacks=[cb1, cb2, cb3])
+            keras_model = models.load_model(KERAS_ROOT / f'model_{fold}.hdf5',
+                                            custom_objects={'root_mean_squared_error': root_mean_squared_error})
+            y_pred = keras_model.predict(x_valid)
+            ypred_all[valid_idx] = y_pred
+            rmse1 = np.sqrt(mean_squared_error(y_train, y_pred))
+            print('Fold:', fold + 1, 'RMSE', rmse1)
+            scores += rmse1 / 2
+            all_models[fold].append(keras_model)
+            gc.collect()
 
-                oof0 = mean_squared_error(y_t, ypred_all)
-                cv_scores['meter'].append(i)
-                cv_scores['buidling_id'].append(build_id)
-                cv_scores['cv_score'].append(scores)
-                print('Meter:', i, 'Building_ID:', build_id, 'CV_RMSE:', np.sqrt(oof0))
-                gc.collect()
+        oof0 = mean_squared_error(y_t, ypred_all)
+        cv_scores['cv_score'].append(scores)
+        print('CV_RMSE:', np.sqrt(oof0))
+        gc.collect()
         with open(OUTPUT_ROOT / 'keras_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
@@ -535,7 +461,4 @@ def prediction(datadf, model, folds):
 def root_mean_squared_error(y_true, y_pred):
     return K.sqrt(K.mean(K.square(y_pred - y_true), axis=0))
 
-
-def mean_squared_error(y_true, y_pred):
-    return K.mean(K.square(y_pred - y_true), axis=0)
 

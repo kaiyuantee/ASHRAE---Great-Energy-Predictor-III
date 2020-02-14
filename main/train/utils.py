@@ -3,7 +3,6 @@ import numpy as np
 import warnings
 from pathlib import Path
 from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categorical_dtype
-from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 from .datasets import Dataframe, Weather
 warnings.filterwarnings('ignore')
 DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
@@ -13,9 +12,10 @@ KERAS_ROOT = OUTPUT_ROOT / 'keras'
 
 class Dataset(object):
 
-    def __init__(self, option):
+    def __init__(self, option, model):
 
         self.option = option
+        self.model = model
 
     def create_dataset(self):
 
@@ -29,10 +29,9 @@ class Dataset(object):
                                       index_col=None)
             weatherdf = pd.read_csv(DATA_ROOT / f'weather_{self.option}.csv',
                                     dtype={'site_id': np.int8},
-                                    parse_dates=['timestamp'],
                                     index_col=None)
             df = Dataframe(df, self.option).process()
-            weather_df = Weather(weatherdf).process()
+            weather_df = Weather(weatherdf, self.model).process()
             df = memory_reducer(df)
             building_df = memory_reducer(building_df)
             weather_df = memory_reducer(weather_df)

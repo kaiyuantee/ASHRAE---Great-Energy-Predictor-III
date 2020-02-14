@@ -46,9 +46,10 @@ class Dataframe(object):
 
 class Weather(object):
 
-    def __init__(self, df):
+    def __init__(self, df, model):
 
         self.df = df
+        self.model = model
 
     def fill_nan_values(self):
 
@@ -212,12 +213,10 @@ class Weather(object):
 
     def timefeat(self):
 
+        self.df['timestamp'] = pd.to_datetime(self.df['timestamp'])
         self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
-        # self.df['day'] = np.int8(self.df['timestamp'].dt.day)
-        # self.df['week'] = np.int8(self.df['timestamp'].dt.week)
         self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
         self.df['month'] = np.int8(self.df['timestamp'].dt.month)
-        # self.df['year'] = np.int8(self.df['timestamp'].dt.year - 2000)
 
         return self.df
 
@@ -246,9 +245,12 @@ class Weather(object):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
                       'precip_depth_1_hr'], axis=1, inplace=True)
-        self.df = self.timefeat()
+        if self.model == 'keras':
+            self.df = self.fill_nan_values()
+        elif self.model == 'lightgbm':
+            self.df = self.timefeat()
+            self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
         self.df = self.set_localtime()
-        self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
 

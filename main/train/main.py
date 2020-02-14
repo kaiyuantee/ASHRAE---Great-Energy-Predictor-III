@@ -31,7 +31,7 @@ def main():
 
     args = parser.parse_args()
 
-    df1, df2, df3 = Dataset(args.mode).create_dataset()
+    df1, df2, df3 = Dataset(args.mode, args.model).create_dataset()
 
     newdf = Preprocess(df1, df2, df3, args.mode).core()
 
@@ -61,21 +61,9 @@ def main():
                                fold=args.fold)
                 Keras(newdf, **configs)
 
-                # for i in range(args.fold):
-                #     if i % 2 == 0:
-                #         xt, yt, xv, yv = xv, yv, xt, yt
-                #     else:
-                #         xt, yt, xv, yv = xt, yt, xv, yv
-                #     all_models.append(Keras(xt, yt, xv, yv, **configs))
-
             elif args.model == 'catboost':
-                all_models = []
-                for i in range(args.fold):
-                    if i % 2 == 0:
-                        xt, yt, xv, yv = xv, yv, xt, yt
-                    else:
-                        xt, yt, xv, yv = xt, yt, xv, yv
-                        all_models.append(CatBoost(xt, yt, xv, yv))
+                CatBoost(newdf)
+
         else:
             print('Choose only train or test mode')
             exit()
