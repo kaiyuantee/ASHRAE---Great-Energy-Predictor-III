@@ -61,7 +61,7 @@ def main():
                 Keras(newdf, **configs)
 
             elif args.model == 'catboost':
-                CatBoost(newdf)
+                CatBoost(newdf, args.fold)
 
         else:
             print('Choose only train or test mode')

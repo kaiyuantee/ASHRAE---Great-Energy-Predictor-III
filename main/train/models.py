@@ -193,8 +193,8 @@ class Keras(object):
 
     def __init__(self, x, dense_dim_1=64, dense_dim_2=32,
                  dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
-                 dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.005,
-                 batch_size=1024, epochs=10, patience=3, fold=2):
+                 dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.001,
+                 batch_size=1024, epochs=10, patience=3, fold=4, **kwargs):
         self.x = x
         self.dense_dim_1 = dense_dim_1
         self.dense_dim_2 = dense_dim_2
@@ -217,8 +217,8 @@ class Keras(object):
                 'lr', 'batch_size', 'epochs',
                 'patience', 'fold']
 
-        # for key in keys:
-        #     setattr(self, key, kwargs.get(key))
+        for key in keys:
+            setattr(self, key, kwargs.get(key))
 
         self.train()
 
@@ -240,20 +240,14 @@ class Keras(object):
         air_temperature_max_lag18 = Input(shape=[1], name='air_temperature_max_lag18')
         air_temperature_min_lag18 = Input(shape=[1], name='air_temperature_min_lag18')
         air_temperature_median_lag18 = Input(shape=[1], name='air_temperature_median_lag18')
-        air_temperature_std_lag18 = Input(shape=[1], name='air_temperature_std_lag18')
-        air_temperature_skew_lag18 = Input(shape=[1], name='air_temperature_skew_lag18')
         dew_temperature_mean_lag18 = Input(shape=[1], name='dew_temperature_mean_lag18')
         dew_temperature_max_lag18 = Input(shape=[1], name='dew_temperature_max_lag18')
         dew_temperature_min_lag18 = Input(shape=[1], name='dew_temperature_min_lag18')
         dew_temperature_median_lag18 = Input(shape=[1], name='dew_temperature_median_lag18')
-        dew_temperature_std_lag18 = Input(shape=[1], name='dew_temperature_std_lag18')
-        dew_temperature_skew_lag18 = Input(shape=[1], name='dew_temperature_skew_lag18')
         cloud_coverage_mean_lag18 = Input(shape=[1], name='cloud_coverage_mean_lag18')
         cloud_coverage_max_lag18 = Input(shape=[1], name='cloud_coverage_max_lag18')
         cloud_coverage_min_lag18 = Input(shape=[1], name='cloud_coverage_min_lag18')
         cloud_coverage_median_lag18 = Input(shape=[1], name='cloud_coverage_median_lag18')
-        cloud_coverage_std_lag18 = Input(shape=[1], name='cloud_coverage_std_lag18')
-        cloud_coverage_skew_lag18 = Input(shape=[1], name='cloud_coverage_skew_lag18')
         mean_building_meter_x = Input(shape=[1], name='mean_building_meter_x')
         mean_building_meter_y = Input(shape=[1], name='mean_building_meter_y')
         median_building_meter_x = Input(shape=[1], name='median_building_meter_x')
@@ -294,20 +288,14 @@ class Keras(object):
             , air_temperature_max_lag18
             , air_temperature_min_lag18
             , air_temperature_median_lag18
-            , air_temperature_std_lag18
-            , air_temperature_skew_lag18
             , dew_temperature_mean_lag18
             , dew_temperature_max_lag18
             , dew_temperature_min_lag18
             , dew_temperature_median_lag18
-            , dew_temperature_std_lag18
-            , dew_temperature_skew_lag18
             , cloud_coverage_mean_lag18
             , cloud_coverage_max_lag18
             , cloud_coverage_min_lag18
             , cloud_coverage_median_lag18
-            , cloud_coverage_std_lag18
-            , cloud_coverage_skew_lag18
             , mean_building_meter_x
             , mean_building_meter_y
             , median_building_meter_x
@@ -338,20 +326,14 @@ class Keras(object):
             air_temperature_max_lag18,
             air_temperature_min_lag18,
             air_temperature_median_lag18,
-            air_temperature_std_lag18,
-            air_temperature_skew_lag18,
             dew_temperature_mean_lag18,
             dew_temperature_max_lag18,
             dew_temperature_min_lag18,
             dew_temperature_median_lag18,
-            dew_temperature_std_lag18,
-            dew_temperature_skew_lag18,
             cloud_coverage_mean_lag18,
             cloud_coverage_max_lag18,
             cloud_coverage_min_lag18,
             cloud_coverage_median_lag18,
-            cloud_coverage_std_lag18,
-            cloud_coverage_skew_lag18,
             mean_building_meter_x,
             mean_building_meter_y,
             median_building_meter_x,
@@ -402,6 +384,7 @@ class Keras(object):
             y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
             x_train = {col: np.array(x_train[col]) for col in x_train.columns}
             x_valid = {col: np.array(x_valid[col]) for col in x_valid.columns}
+
             hist = model.fit(x_train, y_train,
                              batch_size=self.batch_size,
                              epochs=self.epochs,
@@ -410,7 +393,7 @@ class Keras(object):
                              callbacks=[cb1, cb2, cb3])
             keras_model = models.load_model(KERAS_ROOT / f'model_{fold}.hdf5',
                                             custom_objects={'root_mean_squared_error': root_mean_squared_error})
-            y_pred = keras_model.predict(x_valid)
+            y_pred = np.squeeze(keras_model.predict(x_valid))
             ypred_all[valid_idx] = y_pred
             rmse1 = np.sqrt(mean_squared_error(y_train, y_pred))
             print('Fold:', fold + 1, 'RMSE', rmse1)
