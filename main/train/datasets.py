@@ -195,15 +195,15 @@ class Weather(object):
         lag_median = rolled.median().reset_index().astype(np.float16)
         lag_max = rolled.max().reset_index().astype(np.float16)
         lag_min = rolled.min().reset_index().astype(np.float16)
-        lag_std = rolled.std().reset_index().astype(np.float16)
-        lag_skew = rolled.skew().reset_index().astype(np.float16)
+        # lag_std = rolled.std().reset_index().astype(np.float16)
+        # lag_skew = rolled.skew().reset_index().astype(np.float16)
         for col in cols:
             self.df[f'{col}_mean_lag{window}'] = lag_mean[col]
             self.df[f'{col}_median_lag{window}'] = lag_median[col]
             self.df[f'{col}_max_lag{window}'] = lag_max[col]
             self.df[f'{col}_min_lag{window}'] = lag_min[col]
-            self.df[f'{col}_std_lag{window}'] = lag_std[col]
-            self.df[f'{col}_skew_lag{window}'] = lag_skew[col]
+            # self.df[f'{col}_std_lag{window}'] = lag_std[col]
+            # self.df[f'{col}_skew_lag{window}'] = lag_skew[col]
 
         return self.df
 
