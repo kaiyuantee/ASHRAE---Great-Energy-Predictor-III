@@ -240,9 +240,10 @@ class Weather(object):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
                       'precip_depth_1_hr'], axis=1, inplace=True)
-        self.df = self.fill_nan_values()
+        # self.df = self.fill_nan_values()
         self.df = self.timefeat()
-        # self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+        self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+        self.df = self.df.apply(self.df[col].fillna(self.df[col].median()) for col in self.df.columns)
         self.df = self.set_localtime()
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
