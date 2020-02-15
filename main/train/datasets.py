@@ -44,10 +44,9 @@ class Dataframe(object):
 
 class Weather(object):
 
-    def __init__(self, df, model):
+    def __init__(self, df):
 
         self.df = df
-        self.model = model
 
     def fill_nan_values(self):
 
@@ -195,15 +194,15 @@ class Weather(object):
         lag_median = rolled.median().reset_index().astype(np.float16)
         lag_max = rolled.max().reset_index().astype(np.float16)
         lag_min = rolled.min().reset_index().astype(np.float16)
-        lag_std = rolled.std().reset_index().astype(np.float16)
-        lag_skew = rolled.skew().reset_index().astype(np.float16)
+        # lag_std = rolled.std().reset_index().astype(np.float16)
+        # lag_skew = rolled.skew().reset_index().astype(np.float16)
         for col in cols:
             self.df[f'{col}_mean_lag{window}'] = lag_mean[col]
             self.df[f'{col}_median_lag{window}'] = lag_median[col]
             self.df[f'{col}_max_lag{window}'] = lag_max[col]
             self.df[f'{col}_min_lag{window}'] = lag_min[col]
-            self.df[f'{col}_std_lag{window}'] = lag_std[col]
-            self.df[f'{col}_skew_lag{window}'] = lag_skew[col]
+            # self.df[f'{col}_std_lag{window}'] = lag_std[col]
+            # self.df[f'{col}_skew_lag{window}'] = lag_skew[col]
 
         return self.df
 
@@ -241,11 +240,9 @@ class Weather(object):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
                       'precip_depth_1_hr'], axis=1, inplace=True)
-        if self.model == 'keras':
-            self.df = self.fill_nan_values()
-        else:
-            self.df = self.timefeat()
-            self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+        self.df = self.fill_nan_values()
+        self.df = self.timefeat()
+        # self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
         self.df = self.set_localtime()
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()

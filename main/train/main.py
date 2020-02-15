@@ -30,7 +30,7 @@ def main():
 
     args = parser.parse_args()
 
-    df1, df2, df3 = Dataset(args.mode, args.model).create_dataset()
+    df1, df2, df3 = Dataset(args.mode).create_dataset()
 
     newdf = Preprocess(df1, df2, df3, args.mode).core()
 
