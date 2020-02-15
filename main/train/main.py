@@ -45,20 +45,20 @@ def main():
                 LightGBM(newdf, args.fold)
 
             elif args.model == 'keras':
-                configs = dict(dense_dim_1=args.dense_dim_1,
-                               dense_dim_2=args.dense_dim_2,
-                               dense_dim_3=args.dense_dim_3,
-                               dense_dim_4=args.dense_dim_4,
-                               dropout1=args.dropout1,
-                               dropout2=args.dropout2,
-                               dropout3=args.dropout3,
-                               dropout4=args.dropout4,
-                               lr=args.lr,
-                               batch_size=args.batch_size,
-                               epochs=args.epochs,
-                               patience=args.patience,
-                               fold=args.fold)
-                Keras(newdf, **configs)
+                # configs = dict(dense_dim_1=args.dense_dim_1,
+                #                dense_dim_2=args.dense_dim_2,
+                #                dense_dim_3=args.dense_dim_3,
+                #                dense_dim_4=args.dense_dim_4,
+                #                dropout1=args.dropout1,
+                #                dropout2=args.dropout2,
+                #                dropout3=args.dropout3,
+                #                dropout4=args.dropout4,
+                #                lr=args.lr,
+                #                batch_size=args.batch_size,
+                #                epochs=args.epochs,
+                #                patience=args.patience,
+                #                fold=args.fold)
+                Keras(newdf)
 
             elif args.model == 'catboost':
                 CatBoost(newdf, args.fold)

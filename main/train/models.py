@@ -194,7 +194,7 @@ class Keras(object):
     def __init__(self, x, dense_dim_1=64, dense_dim_2=32,
                  dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
                  dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.001,
-                 batch_size=1024, epochs=10, patience=3, fold=4, **kwargs):
+                 batch_size=1024, epochs=10, patience=3, fold=4):
         self.x = x
         self.dense_dim_1 = dense_dim_1
         self.dense_dim_2 = dense_dim_2
@@ -209,17 +209,6 @@ class Keras(object):
         self.epochs = epochs
         self.patience = patience
         self.fold = fold
-
-        keys = ['dense_dim_1', 'dense_dim_2',
-                'dense_dim_3', 'dense_dim_4',
-                'dropout1', 'dropout2',
-                'dropout3', 'dropout4',
-                'lr', 'batch_size', 'epochs',
-                'patience', 'fold']
-
-        for key in keys:
-            setattr(self, key, kwargs.get(key))
-
         self.train()
 
     def body(self):
