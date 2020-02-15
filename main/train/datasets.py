@@ -246,7 +246,7 @@ class Weather(object):
                       'precip_depth_1_hr'], axis=1, inplace=True)
         if self.model == 'keras':
             self.df = self.fill_nan_values()
-        elif self.model == 'lightgbm':
+        else:
             self.df = self.timefeat()
             self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
         self.df = self.set_localtime()
