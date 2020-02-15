@@ -384,7 +384,7 @@ class Keras(object):
                                             custom_objects={'root_mean_squared_error': root_mean_squared_error})
             y_pred = np.squeeze(keras_model.predict(x_valid))
             ypred_all[valid_idx] = y_pred
-            rmse1 = np.sqrt(mean_squared_error(y_train, y_pred))
+            rmse1 = np.sqrt(mean_squared_error(y_valid, y_pred))
             print('Fold:', fold + 1, 'RMSE', rmse1)
             scores += rmse1 / 2
             all_models[fold].append(keras_model)
