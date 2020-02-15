@@ -1,7 +1,6 @@
 import argparse
-from pathlib import Path
 from .models import *
-from .utils import Dataset, DATA_ROOT
+from .utils import Dataset
 from .feature_engineering import Preprocess
 
 

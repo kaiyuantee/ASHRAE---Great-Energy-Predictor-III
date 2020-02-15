@@ -1,13 +1,10 @@
 import pandas as pd
 import numpy as np
 import warnings
-from pathlib import Path
 from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categorical_dtype
 from .datasets import Dataframe, Weather
+from .directories import DATA_ROOT
 warnings.filterwarnings('ignore')
-DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
-OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
-KERAS_ROOT = OUTPUT_ROOT / 'keras'
 
 
 class Dataset(object):

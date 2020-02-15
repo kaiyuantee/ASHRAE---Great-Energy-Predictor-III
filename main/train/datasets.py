@@ -4,10 +4,8 @@ import datetime
 import gc
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import warnings
-from pathlib import Path
-
+from .directories import DATA_ROOT
 warnings.filterwarnings('ignore')
-DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
 
 
 class Dataframe(object):
