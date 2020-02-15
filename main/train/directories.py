@@ -1,5 +1,4 @@
 import os
-from .utils import *
 from pathlib import Path
 DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
 OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
