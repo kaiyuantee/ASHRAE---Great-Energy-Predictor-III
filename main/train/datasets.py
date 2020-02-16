@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import gc
+from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categorical_dtype
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import warnings
 from .directories import DATA_ROOT
@@ -167,6 +168,7 @@ class Weather(object):
                 np.uint8)
         self.df.loc[(self.df['weekday'] == 5) | (self.df['weekday'] == 6), 'is_holiday'] = 1
         self.df['is_holiday'] = self.df.is_holiday.fillna(0)
+        self.df['is_holiday'] = self.df['is_holiday'].astype(np.int8)
 
         return self.df
 
@@ -210,9 +212,8 @@ class Weather(object):
     def timefeat(self):
 
         self.df['timestamp'] = pd.to_datetime(self.df['timestamp'])
-        self.df['hour'] = np.int8(self.df['timestamp'].dt.hour)
-        self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday)
-        self.df['month'] = np.int8(self.df['timestamp'].dt.month)
+        self.df['hour'] = np.int8(self.df['timestamp'].dt.hour).astype(np.int8)
+        self.df['weekday'] = np.int8(self.df['timestamp'].dt.weekday).astype(np.int8)
 
         return self.df
 
@@ -237,6 +238,17 @@ class Weather(object):
 
         return arr[(val % 16)]
 
+    def nan_filler(self):
+
+        for col in self.df.columns:
+
+            if is_datetime(self.df[col]) or is_categorical_dtype(self.df[col]):
+                continue
+
+            self.df[col].fillna(self.df[col].median(), inplace=True)
+
+        return self.df
+
     def process(self):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
@@ -246,6 +258,7 @@ class Weather(object):
         else:
             self.df = self.timefeat()
             self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+            self.df = self.nan_filler()
         self.df = self.set_localtime()
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
