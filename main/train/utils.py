@@ -9,10 +9,9 @@ warnings.filterwarnings('ignore')
 
 class Dataset(object):
 
-    def __init__(self, option, model):
+    def __init__(self, option):
 
         self.option = option
-        self.model = model
 
     def create_dataset(self):
 
@@ -28,7 +27,7 @@ class Dataset(object):
                                     dtype={'site_id': np.int8},
                                     index_col=None)
             df = Dataframe(df, self.option).process()
-            weather_df = Weather(weatherdf, self.model).process()
+            weather_df = Weather(weatherdf).process()
             df = memory_reducer(df)
             building_df = memory_reducer(building_df)
             weather_df = memory_reducer(weather_df)

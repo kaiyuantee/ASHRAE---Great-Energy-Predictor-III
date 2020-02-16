@@ -1,7 +1,9 @@
 venv/
 Datasets/
-*.csv
-.idea/
-*.json
-__pycache__
 outputdir/
+.idea/
+__pycache__
+*.csv
+*.json
+*.p
+*.hdf5

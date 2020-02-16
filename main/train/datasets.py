@@ -45,10 +45,9 @@ class Dataframe(object):
 
 class Weather(object):
 
-    def __init__(self, df, model):
+    def __init__(self, df):
 
         self.df = df
-        self.model = model
 
     def fill_nan_values(self):
 
@@ -253,13 +252,11 @@ class Weather(object):
 
         self.df.drop(['wind_direction', 'wind_speed', 'sea_level_pressure',
                       'precip_depth_1_hr'], axis=1, inplace=True)
-        if self.model == 'keras':
-            self.df = self.fill_nan_values()
-        else:
-            self.df = self.timefeat()
-            self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
-            self.df = self.nan_filler()
+
+        self.df = self.timefeat()
         self.df = self.set_localtime()
+        self.df = self.df.groupby("site_id").apply(lambda group: group.interpolate(limit_direction="both"))
+        self.df = self.nan_filler()
         self.df = self.add_lag_feature(window=18)
         self.df = self.holidays()
 

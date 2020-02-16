@@ -15,6 +15,12 @@ class Preprocess(object):
         self.weather = weather
         self.option = option
 
+    def to_int8(self):
+        cat_cols = ['weekday', 'hour', 'is_holiday']
+        for col in cat_cols:
+            self.df[col] = self.df[col].astype(np.int8)
+        return self.df
+
     @staticmethod
     def new_feat(df):
 
@@ -49,6 +55,7 @@ class Preprocess(object):
         self.df = self.df.merge(newdf1, on=["building_id", "meter"])
         self.df = self.df.merge(newdf2, on=["building_id", "meter", "hour"])
         self.df = memory_reducer(self.df)
+        self.df = self.to_int8()
         gc.collect()
 
         return self.df

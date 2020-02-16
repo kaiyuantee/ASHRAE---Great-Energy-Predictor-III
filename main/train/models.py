@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error
 import gc
 import pickle
 from tqdm import tqdm
-from .directories import OUTPUT_ROOT, KERAS_ROOT
+from .directories import DATA_ROOT, OUTPUT_ROOT, LGBM_ROOT, KERAS_ROOT, CATBOOST_ROOT
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -26,19 +26,38 @@ category_cols = ["building_id",
                  'is_holiday']
 
 
-def columns(df):
-    all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading", "row_id"]]
-    return df[all_features]
+def lgbmcolumns(df, mode):
+    if mode == 'train':
+        all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading"]]
+        return df[all_features]
+
+    elif mode == 'test':
+        all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
+        return df[all_features]
+
+
+def catcolumns(df, mode):
+    if mode == 'train':
+        all_features = [col for col in df.columns if col not in ["timestamp", "meter", "meter_reading"]]
+        return df[all_features]
+
+    elif mode == 'test':
+        all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
+        return df[all_features]
 
 
 def kerascolumns(df):
-    all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading", "row_id"]]
+    all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
     return df[all_features]
+
+
+def root_mean_squared_error(y_true, y_pred):
+    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=0))
 
 
 class LightGBM(object):
 
-    def __init__(self, x, fold, objective='regression',
+    def __init__(self, x, folds, mode, objective='regression',
                  boosting='gbdt', metric='rmse',
                  num_leaves=31, lr=0.05, bagg_freq=5,
                  bagg_frac=0.95, feature_frac=0.85,
@@ -59,29 +78,33 @@ class LightGBM(object):
         self.num_boost_round = num_boost_round
         self.verbose_eval = verbose_eval
         self.early_stopping = early_stopping
-        self.train()
+        self.fold = folds
+        self.mode = mode
 
     def transform(self, i):
 
         x = self.x[self.x.site_id == i].reset_index(drop=True)
         y = x.meter_reading
-        x = columns(x)
+        x = lgbmcolumns(x, self.mode)
 
         return x, y
 
     def train(self):
 
+        print('LightGBM Model')
         all_models = {}
         cv_scores = {"site_id": [], "cv_score": []}
 
         for i in tqdm(range(16)):
-
+            print('Site_ID:', i)
             x, y = self.transform(i)
             scores = 0
             all_models[i] = []
             y_pred_train_site = np.zeros(x.shape[0])
             kf = KFold(n_splits=self.fold, shuffle=False)
+
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
+                print('Fold:', fold)
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 params = {
@@ -98,18 +121,17 @@ class LightGBM(object):
                 d_half_1 = lgb.Dataset(x_t, label=y_t, categorical_feature=self.cat_cols, free_raw_data=False)
                 d_half_2 = lgb.Dataset(x_v, label=y_v, categorical_feature=self.cat_cols, free_raw_data=False)
                 watchlist = [d_half_1, d_half_2]
-                print("Building model in fold 1")
-                model_half_1 = lgb.train(params, train_set=d_half_1,
-                                         num_boost_round=self.num_boost_round,
-                                         valid_sets=watchlist, verbose_eval=self.verbose_eval,
-                                         early_stopping_rounds=self.early_stopping)
+                modelz = lgb.train(params, train_set=d_half_1,
+                                   num_boost_round=self.num_boost_round,
+                                   valid_sets=watchlist, verbose_eval=self.verbose_eval,
+                                   early_stopping_rounds=self.early_stopping)
                 # predictions
-                y_pred_valid1 = model_half_1.predict(x_v, num_iteration=model_half_1.best_iteration)
-                y_pred_train_site[valid_index] = y_pred_valid1
-                rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
-                print('SiteID number :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
-                scores += rmse1 / 2
-                all_models[i].append(model_half_1)
+                y_pred = modelz.predict(x_v, num_iteration=modelz.best_iteration)
+                y_pred_train_site[valid_index] = y_pred
+                rmse = np.sqrt(mean_squared_error(y_v, y_pred))
+                print('SiteID number :', i, 'Fold:', fold + 1, 'RMSE', rmse)
+                scores += rmse / 2
+                all_models[i].append(modelz)
                 gc.collect()
 
             oof0 = mean_squared_error(y, y_pred_train_site)
@@ -117,38 +139,69 @@ class LightGBM(object):
             cv_scores['cv_score'].append(scores)
             print('Site_ID:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
-        with open(OUTPUT_ROOT / 'lgbm_allmodels.p', 'wb') as output_file:
+        with open(LGBM_ROOT / 'lgbm_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
 
+    def predict(self):
+
+        df_test_sites = []
+
+        for i in tqdm(range(16)):
+
+            df = self.x[self.x.site_id == i]
+            row_ids_site = df.row_id
+            df = lgbmcolumns(df, self.mode)
+            y_pred_test_site = np.zeros(df.shape[0])
+            with open(LGBM_ROOT / 'lgbm_allmodels.p', 'rb') as input_file:
+                lgbm_allmodels = pickle.load(input_file)
+            print("Predicting for site_id", i)
+
+            for fold in range(self.fold):
+                model_lgb = lgbm_allmodels[i][fold]
+                y_pred_test_site += model_lgb.predict(df, num_iteration=model_lgb.best_iteration) / self.fold
+                gc.collect()
+
+            df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
+            df_test_sites.append(df_test_site)
+
+            print("Prediction for site_id", i, "completed")
+            gc.collect()
+
+        submission = pd.concat(df_test_sites)
+        submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
+        submission.to_csv(OUTPUT_ROOT / "lgbm_prediction.csv", index=False)
+
 
 class CatBoost(object):
-    def __init__(self, x, fold):
+    def __init__(self, x, fold, mode):
         self.x = x
         self.fold = fold
-        self.train()
+        self.mode = mode
 
     def transform(self, i):
 
         x = self.x[self.x.meter == i].reset_index(drop=True)
         y = x.meter_reading
-        x = columns(x)
+        x = catcolumns(x, self.mode)
 
         return x, y
 
     def train(self):
 
+        print('CatBoost Model')
         all_models = {}
         cv_scores = {"meter": [], "cv_score": []}
 
         for i in tqdm(range(4)):
-
+            print('Meter:', i)
             x, y = self.transform(i)
             scores = 0
             all_models[i] = []
             y_pred_train_site = np.zeros(x.shape[0])
             kf = KFold(n_splits=self.fold, shuffle=False)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
+                print('Fold:', fold)
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 cat_params = {
@@ -158,10 +211,10 @@ class CatBoost(object):
                     'loss_function': 'RMSE',
                     'metric_period': 10,
                     'task_type': 'GPU',
+                    'devices': '0:1',
                     'early_stopping_rounds': 100,
                     'depth': 8,
                 }
-                print('building some shit now')
                 estimator = CatBoostRegressor(**cat_params)
                 catmodel = estimator.fit(
                     x_t, y_t,
@@ -170,11 +223,10 @@ class CatBoost(object):
                     use_best_model=True,
                     verbose=True)
                 # predictions
-
                 y_pred_valid1 = catmodel.predict([x_v, y_v])
                 y_pred_train_site[valid_index] = y_pred_valid1
                 rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
-                print('SiteID number :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
+                print('Meter :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
                 scores += rmse1 / 2
                 all_models[i].append(catmodel)
                 gc.collect()
@@ -184,9 +236,37 @@ class CatBoost(object):
             cv_scores['cv_score'].append(scores)
             print('Meter:', i, 'CV_RMSE:', np.sqrt(oof0))
             gc.collect()
-        with open(OUTPUT_ROOT / 'catboost_allmodels.p', 'wb') as output_file:
+        with open(CATBOOST_ROOT / 'catboost_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
+
+    def predict(self):
+
+        df_test_sites = []
+
+        for i in tqdm(range(4)):
+
+            df = self.x[self.x.meter == i]
+            row_ids_site = df.row_id
+            df = catcolumns(df, self.mode)
+            y_pred_test_site = np.zeros(df.shape[0])
+            with open(CATBOOST_ROOT / 'catboost_allmodels.p', 'rb') as input_file:
+                cat_allmodels = pickle.load(input_file)
+            print("Predicting for meter", i)
+
+            for fold in range(self.fold):
+                model_cat = cat_allmodels[i][fold]
+                y_pred_test_site += model_cat.predict(df) / self.fold
+                gc.collect()
+
+            df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
+            df_test_sites.append(df_test_site)
+
+            print("Prediction for meter:", i, "completed")
+            gc.collect()
+            submission = pd.concat(df_test_sites)
+            submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
+            submission.to_csv(OUTPUT_ROOT / "catboost_prediction.csv", index=False)
 
 
 class Keras(object):
@@ -209,7 +289,6 @@ class Keras(object):
         self.epochs = epochs
         self.patience = patience
         self.fold = fold
-        self.train()
 
     def body(self):
         # Inputs
@@ -357,6 +436,7 @@ class Keras(object):
         return early_stopping, model_checkpoint, reducer
 
     def train(self):
+        print('Keras Embedding Model')
         model = self.body()
         kf = KFold(n_splits=self.fold)
         all_models = {}
@@ -367,19 +447,19 @@ class Keras(object):
         ypred_all = np.zeros(x_t.shape[0])
         scores = 0
         for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
+            print('Fold:', fold)
             all_models[fold] = []
             cb1, cb2, cb3 = self.callbacks(fold)
             x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
             y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
             x_train = {col: np.array(x_train[col]) for col in x_train.columns}
             x_valid = {col: np.array(x_valid[col]) for col in x_valid.columns}
-
-            hist = model.fit(x_train, y_train,
-                             batch_size=self.batch_size,
-                             epochs=self.epochs,
-                             validation_data=(x_valid, y_valid),
-                             verbose=1,
-                             callbacks=[cb1, cb2, cb3])
+            model.fit(x_train, y_train,
+                      batch_size=self.batch_size,
+                      epochs=self.epochs,
+                      validation_data=(x_valid, y_valid),
+                      verbose=1,
+                      callbacks=[cb1, cb2, cb3])
             keras_model = models.load_model(KERAS_ROOT / f'model_{fold}.hdf5',
                                             custom_objects={'root_mean_squared_error': root_mean_squared_error})
             y_pred = np.squeeze(keras_model.predict(x_valid))
@@ -394,43 +474,26 @@ class Keras(object):
         cv_scores['cv_score'].append(scores)
         print('CV_RMSE:', np.sqrt(oof0))
         gc.collect()
-        with open(OUTPUT_ROOT / 'keras_allmodels.p', 'wb') as output_file:
+        with open(KERAS_ROOT / 'keras_allmodels.p', 'wb') as output_file:
             pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
 
+    def predict(self):
 
-def prediction(datadf, model, folds):
-    if model == 'lightgbm':
-        df_test_sites = []
+        i = 0
+        result = np.zeros((self.x.shape[0]), dtype=np.float32)
+        step_size = 5000
+        row_ids = self.x.row_id
+        with open(KERAS_ROOT / 'keras_allmodels.p', 'rb') as input_file:
+            keras_allmodels = pickle.load(input_file)
+        print('Predicting for Keras Embedding Model now')
+        for j in tqdm(range(int(np.ceil(self.x.shape[0] / step_size)))):
+            batched_df = self.x.iloc[i: i + step_size]
+            for_prediction = kerascolumns(batched_df)
+            result[i:min(i + step_size, self.x.shape[0])] =\
+                np.expm1(sum([model.predict(for_prediction, batch_size=1024)[:, 0] for model in keras_allmodels]) / self.fold)
+            i += step_size
 
-        for i in tqdm(range(16)):
-
-            print("Preparing test data for site_id", i)
-            df = datadf[datadf.site_id == i]
-            row_ids_site = df.row_id
-            df = columns(df)
-            y_pred_test_site = np.zeros(df.shape[0])
-            with open(OUTPUT_ROOT / 'lgbm_allmodels.p', 'rb') as input_file:
-                lgbm_allmodels = pickle.load(input_file)
-            print("Predicting for site_id", i)
-
-            for fold in range(folds):
-                model_lgb = lgbm_allmodels[i][fold]
-                y_pred_test_site += model_lgb.predict(df, num_iteration=model_lgb.best_iteration) / folds
-                gc.collect()
-
-            df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
-            df_test_sites.append(df_test_site)
-
-            print("Prediction for site_id", i, "completed")
-            gc.collect()
-
-        submission = pd.concat(df_test_sites)
+        submission = pd.DataFrame({"row_id": row_ids, "meter_reading": result})
         submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
-        return submission.to_csv(OUTPUT_ROOT / "lgbm_prediction.csv", index=False)
-
-
-def root_mean_squared_error(y_true, y_pred):
-    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=0))
-
-
+        submission.to_csv(OUTPUT_ROOT / 'keras_submission.csv', index=False)

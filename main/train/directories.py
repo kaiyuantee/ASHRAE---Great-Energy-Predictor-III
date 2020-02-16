@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 DATA_ROOT = Path(__file__).parent.parent.parent / 'Datasets'
 OUTPUT_ROOT = Path(__file__).parent.parent.parent / 'outputdir'
-KERAS_ROOT = OUTPUT_ROOT / 'keras'
+LGBM_ROOT = OUTPUT_ROOT / 'lightgbm'
 CATBOOST_ROOT = OUTPUT_ROOT / 'catboost'
+KERAS_ROOT = OUTPUT_ROOT / 'keras'
 
 
 def main():
