@@ -14,6 +14,7 @@ python -m main.train.main \
 --model keras \
 --mode test \
 --fold 4 \
---batch_size 5000 \
+--batch_size 1024 \
+--step_size 5000
 
 

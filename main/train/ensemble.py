@@ -1,9 +1,12 @@
 import pandas as pd
 import numpy as np
 import optuna
+import os
 from functools import partial
 from keras.losses import mean_squared_error
 from ..directories import OUTPUT_ROOT, DATA_ROOT
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 class GeneralizedMeanBlender():
@@ -65,7 +68,6 @@ class GeneralizedMeanBlender():
 
 
 def main():
-
     testdf = pd.read_csv(DATA_ROOT / 'test.csv',
                          parse_dates=['timestamp'])
     build = pd.read_csv(DATA_ROOT / 'building_metadata.csv')
@@ -83,30 +85,30 @@ def main():
         testdf[f'pred{i}'] = x
         del x
 
-    leakdf = pd.merge(leak, testdf[['building_id', 'meter', 'timestamp',
+    leak = pd.merge(leak, testdf[['building_id', 'meter', 'timestamp',
                                     *[f"pred{i}" for i in range(len(every_models))], 'row_id']], "left")
-    leakdf = pd.merge(leak, build[['building_id', 'site_id']], 'left')
+    leak = pd.merge(leak, build[['building_id', 'site_id']], 'left')
 
     # log1p then mean
-    log1p_then_mean = np.mean(np.log1p(leakdf[[f"pred{i}" for i in range(len(every_models))]].values), axis=1)
+    log1p_then_mean = np.mean(np.log1p(leak[[f"pred{i}" for i in range(len(every_models))]].values), axis=1)
     leak_score = np.sqrt(mean_squared_error(log1p_then_mean, np.log1p(leak.meter_reading)))
     print('log1p then mean score =', leak_score)
 
     # mean then log1p
-    mean_then_log1p = np.log1p(np.mean(leakdf[[f"pred{i}" for i in range(len(every_models))]].values, axis=1))
+    mean_then_log1p = np.log1p(np.mean(leak[[f"pred{i}" for i in range(len(every_models))]].values, axis=1))
     leak_score = np.sqrt(mean_squared_error(mean_then_log1p, np.log1p(leak.meter_reading)))
     print('mean then log1p score=', leak_score)
 
-    X = np.log1p(leakdf[[f"pred{i}" for i in range(len(every_models))]].values)
-    y = np.log1p(leakdf["meter_reading"].values)
+    X = np.log1p(leak[[f"pred{i}" for i in range(len(every_models))]].values)
+    y = np.log1p(leak["meter_reading"].values)
 
     gmb = GeneralizedMeanBlender()
     gmb.fit(X, y, n_trials=20)
     # after optuna
-    print(np.sqrt(mean_squared_error(gmb.transform(X), np.log1p(leakdf.meter_reading))))
+    print(np.sqrt(mean_squared_error(gmb.transform(X), np.log1p(leak.meter_reading))))
 
     # make test predictions
-    sample_submission = pd.read_csv(DATA_ROOT/"sample_submission.csv")
+    sample_submission = pd.read_csv(DATA_ROOT / "sample_submission.csv")
     x_test = testdf[[f"pred{i}" for i in range(len(every_models))]].values
     sample_submission['meter_reading'] = np.expm1(gmb.transform(np.log1p(x_test)))
     sample_submission.loc[sample_submission.meter_reading < 0, 'meter_reading'] = 0
@@ -116,5 +118,4 @@ def main():
 
 
 if __name__ == '__main__':
-
     main()

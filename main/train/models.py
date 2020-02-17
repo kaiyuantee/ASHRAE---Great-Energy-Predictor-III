@@ -26,11 +26,10 @@ category_cols = ["building_id",
                  'is_holiday']
 
 catboostcols = ["building_id",
-                 "primary_use",
-                 "weekday",
-                 "hour",
-                 'is_holiday']
-
+                "primary_use",
+                "weekday",
+                "hour",
+                'is_holiday']
 
 
 def lgbmcolumns(df):
@@ -198,14 +197,14 @@ class CatBoost(object):
         cv_scores = {"meter": [], "cv_score": []}
 
         for i in tqdm(range(4)):
-            print('Meter:', i)
+            print('\nMeter:', i)
             x, y = self.transform(i)
             scores = 0
             all_models[i] = []
             y_pred_train_site = np.zeros(x.shape[0])
             kf = KFold(n_splits=self.fold, shuffle=False)
             for fold, (train_index, valid_index) in enumerate(kf.split(x, y)):
-                print('Fold:', fold)
+                print('\nFold:', fold)
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 cat_params = {
@@ -222,12 +221,12 @@ class CatBoost(object):
                 estimator = CatBoostRegressor(**cat_params)
                 catmodel = estimator.fit(
                     x_t, y_t,
-                    eval_set=[x_v, y_v],
+                    eval_set=(x_v, y_v),
                     cat_features=self.cat_cols,
                     use_best_model=True,
                     verbose=True)
                 # predictions
-                y_pred_valid1 = catmodel.predict([x_v, y_v])
+                y_pred_valid1 = catmodel.predict(x_v)
                 y_pred_train_site[valid_index] = y_pred_valid1
                 rmse1 = np.sqrt(mean_squared_error(y_v, y_pred_valid1))
                 print('Meter :', i, 'Fold:', fold + 1, 'RMSE', rmse1)
@@ -256,7 +255,7 @@ class CatBoost(object):
             y_pred_test_site = np.zeros(df.shape[0])
             with open(CATBOOST_ROOT / 'catboost_allmodels.p', 'rb') as input_file:
                 cat_allmodels = pickle.load(input_file)
-            print("Predicting for meter", i)
+            print("\nPredicting for meter", i)
 
             for fold in range(self.fold):
                 model_cat = cat_allmodels[i][fold]
@@ -266,7 +265,7 @@ class CatBoost(object):
             df_test_site = pd.DataFrame({"row_id": row_ids_site, "meter_reading": y_pred_test_site})
             df_test_sites.append(df_test_site)
 
-            print("Prediction for meter:", i, "completed")
+            print("\nPrediction for meter:", i, "completed")
             gc.collect()
             submission = pd.concat(df_test_sites)
             submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
@@ -275,7 +274,7 @@ class CatBoost(object):
 
 class Keras(object):
 
-    def __init__(self, x, fold, batch_size,
+    def __init__(self, x, fold, batch_size, step_size=1000,
                  lr=0.001, dense_dim_1=64, dense_dim_2=32,
                  dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
                  dropout2=0.1, dropout3=0.1, dropout4=0.1,
@@ -294,6 +293,7 @@ class Keras(object):
         self.epochs = int(epochs)
         self.patience = patience
         self.fold = int(fold)
+        self.step_size = int(step_size)
 
     def body(self):
         # Inputs
@@ -444,7 +444,6 @@ class Keras(object):
         print('Keras Embedding Model')
         model = self.body()
         kf = KFold(n_splits=self.fold)
-        all_models = {}
         cv_scores = {'Fold': [], 'cv_score': []}
         x_t = self.x
         y_t = x_t.meter_reading
@@ -453,7 +452,6 @@ class Keras(object):
         scores = 0
         for fold, (train_idx, valid_idx) in enumerate(kf.split(x_t, y_t)):
             print('Fold:', fold)
-            all_models[fold] = []
             cb1, cb2, cb3 = self.callbacks(fold)
             x_train, x_valid = x_t.iloc[train_idx], x_t.iloc[valid_idx]
             y_train, y_valid = y_t.iloc[train_idx], y_t.iloc[valid_idx]
@@ -472,15 +470,13 @@ class Keras(object):
             rmse1 = np.sqrt(mean_squared_error(y_valid, y_pred))
             print('Fold:', fold + 1, 'RMSE', rmse1)
             scores += rmse1 / 2
-            all_models[fold].append(keras_model)
             gc.collect()
 
         oof0 = mean_squared_error(y_t, ypred_all)
+        cv_scores['Fold'].append(fold)
         cv_scores['cv_score'].append(scores)
         print('CV_RMSE:', np.sqrt(oof0))
         gc.collect()
-        with open(KERAS_ROOT / 'keras_allmodels.p', 'wb') as output_file:
-            pickle.dump(all_models, output_file)
         print(pd.DataFrame.from_dict(cv_scores))
 
     def predict(self):
@@ -488,16 +484,18 @@ class Keras(object):
         i = 0
         result = np.zeros((self.x.shape[0]), dtype=np.float32)
         row_ids = self.x.row_id
-        with open(KERAS_ROOT / 'keras_allmodels.p', 'rb') as input_file:
-            keras_allmodels = pickle.load(input_file)
+        keras_allmodels = []
+        for fold in range(self.fold):
+            keras_allmodels.append(models.load_model(KERAS_ROOT / f'model_{fold}.hdf5',
+                                                     custom_objects={'root_mean_squared_error': root_mean_squared_error}))
         print('Predicting for Keras Embedding Model now')
-        for j in tqdm(range(int(np.ceil(self.x.shape[0] / self.batch_size)))):
-            batched_df = self.x.iloc[i: i + self.batch_size]
+        for j in tqdm(range(int(np.ceil(self.x.shape[0] / self.step_size)))):
+            batched_df = self.x.iloc[i: i + self.step_size]
             for_prediction = kerascolumns(batched_df)
-            result[i:min(i + self.batch_size, self.x.shape[0])] =\
-                np.expm1(sum([model.predict(for_prediction, batch_size=1024)[:, 0] for model in keras_allmodels]) / self.fold)
-            i += self.batch_size
+            result[i:min(i + self.step_size, self.x.shape[0])] =\
+                np.expm1(sum([model.predict(for_prediction, batch_size=self.batch_size)[:, 0] for model in keras_allmodels]) / self.fold)
+            i += self.step_size
 
         submission = pd.DataFrame({"row_id": row_ids, "meter_reading": result})
         submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)
-        submission.to_csv(OUTPUT_ROOT / 'keras_submission.csv', index=False)
+        submission.to_csv(OUTPUT_ROOT / 'keras_prediction.csv', index=False)

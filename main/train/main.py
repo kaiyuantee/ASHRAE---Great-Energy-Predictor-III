@@ -13,6 +13,7 @@ def main():
     arg('--mode', default='train', help='train or test mode')
     arg('--lr', default=0.005, help='learning rate')
     arg('--batch_size', default=1024, help='batchsize')
+    arg('--step_size', default=1024, help='step sizes for keras prediction')
     arg('--epochs', default=10, help='number of epochs')
     arg('--fold', help='number of folds')
 
@@ -49,7 +50,6 @@ def main():
             elif args.mode == 'test':
 
                 CatBoost(newdf,
-                         args.mode,
                          args.fold).predict()
 
             else:
@@ -69,7 +69,8 @@ def main():
 
                 Keras(newdf,
                       args.fold,
-                      args.batch_size).predict()
+                      args.batch_size,
+                      step_size=args.step_size).predict()
 
             else:
                 exit()
