@@ -25,6 +25,13 @@ category_cols = ["building_id",
                  "hour",
                  'is_holiday']
 
+catboostcols = ["building_id",
+                 "primary_use",
+                 "weekday",
+                 "hour",
+                 'is_holiday']
+
+
 
 def lgbmcolumns(df):
 
@@ -174,6 +181,7 @@ class CatBoost(object):
         self.metric_period = metric_period
         self.early_stopping = early_stopping
         self.depth = depth
+        self.cat_cols = catboostcols
 
     def transform(self, i):
 
@@ -215,7 +223,7 @@ class CatBoost(object):
                 catmodel = estimator.fit(
                     x_t, y_t,
                     eval_set=[x_v, y_v],
-                    cat_features=category_cols,
+                    cat_features=self.cat_cols,
                     use_best_model=True,
                     verbose=True)
                 # predictions
