@@ -15,7 +15,7 @@ def main():
     arg('--batch_size', default=1024, help='batchsize')
     arg('--epochs', default=10, help='number of epochs')
     arg('--patience', default=2, help='number of patience')
-    arg('--fold', default=2, help='number of folds')
+    arg('--fold', help='number of folds')
 
     args = parser.parse_args()
 

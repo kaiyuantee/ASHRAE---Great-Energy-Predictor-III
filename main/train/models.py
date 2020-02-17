@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error
 import gc
 import pickle
 from tqdm import tqdm
-from .directories import DATA_ROOT, OUTPUT_ROOT, LGBM_ROOT, KERAS_ROOT, CATBOOST_ROOT
+from .directories import OUTPUT_ROOT, LGBM_ROOT, KERAS_ROOT, CATBOOST_ROOT
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 

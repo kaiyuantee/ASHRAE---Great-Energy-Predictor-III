@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
-import os
 import optuna
-from .utils import OUTPUT_ROOT, DATA_ROOT
-from .models import mean_squared_error
+from functools import partial
+from keras.losses import mean_squared_error
+from .directories import OUTPUT_ROOT, DATA_ROOT
 
 
 class GeneralizedMeanBlender():
@@ -65,16 +65,17 @@ class GeneralizedMeanBlender():
 
 
 def main():
-    testdf = pd.read_csv(DATA_ROOT/'test.csv')
-    build = pd.read_csv(DATA_ROOT/'building_metadata.csv')
-    leak = pd.read_feather(DATA_ROOT/ 'leak.feather')
+
+    testdf = pd.read_csv(DATA_ROOT / 'test.csv')
+    build = pd.read_csv(DATA_ROOT / 'building_metadata.csv')
+    leak = pd.read_feather(DATA_ROOT / 'leak.feather')
 
     leak.fillna(0, inplace=True)
     leak = leak[(leak.timestamp.dt.year > 2016) & (leak.timestamp.dt.year < 2019)]
-    leak.loc[leak.meter_reading < 0, 'meter_reading'] = 0 # remove negative values
+    leak.loc[leak.meter_reading < 0, 'meter_reading'] = 0  # remove negative values
     leak = leak[leak.building_id != 245]
 
-    every_models = ['lightgbm.csv', 'catboost.csv', 'keras.csv']
+    every_models = ['lgbm_prediction.csv', 'catboost_prediction.csv', 'keras_prediction.csv']
     for i, model in enumerate(every_models):
         x = pd.read_csv(f'../input/{model}.csv', index_col=0).meter_reading
         x[x < 0] = 0
@@ -110,7 +111,7 @@ def main():
     sample_submission.loc[sample_submission.meter_reading < 0, 'meter_reading'] = 0
 
     # save submission
-    sample_submission.to_csv('finalpredictions.csv', index=False, float_format='%.4f')
+    sample_submission.to_csv(OUTPUT_ROOT / 'finalpredictions.csv', index=False, float_format='%.4f')
 
 
 if __name__ == '__main__':
