@@ -2,5 +2,5 @@
 
 echo "Creating Directories"
 
-python -m main.train.directories
+python -m main.directories
 
