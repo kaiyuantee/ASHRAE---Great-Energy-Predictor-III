@@ -3,7 +3,7 @@ import numpy as np
 import optuna
 from functools import partial
 from keras.losses import mean_squared_error
-from .directories import OUTPUT_ROOT, DATA_ROOT
+from ..directories import OUTPUT_ROOT, DATA_ROOT
 
 
 class GeneralizedMeanBlender():

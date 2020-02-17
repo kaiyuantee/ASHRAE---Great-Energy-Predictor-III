@@ -3,7 +3,7 @@ import numpy as np
 import warnings
 from pandas.api.types import is_datetime64_any_dtype as is_datetime, is_categorical_dtype
 from .datasets import Dataframe, Weather
-from .directories import DATA_ROOT
+from ..directories import DATA_ROOT
 warnings.filterwarnings('ignore')
 
 

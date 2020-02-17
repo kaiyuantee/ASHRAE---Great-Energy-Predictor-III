@@ -14,7 +14,6 @@ def main():
     arg('--lr', default=0.005, help='learning rate')
     arg('--batch_size', default=1024, help='batchsize')
     arg('--epochs', default=10, help='number of epochs')
-    arg('--patience', default=2, help='number of patience')
     arg('--fold', help='number of folds')
 
     args = parser.parse_args()
@@ -29,37 +28,52 @@ def main():
 
             if args.mode == 'train':
 
-                LightGBM(newdf, args.fold, args.mode).train()
+                LightGBM(newdf,
+                         args.fold,
+                         lr=args.lr).train()
 
             elif args.mode == 'test':
 
-                LightGBM(newdf, args.fold, args.mode).predict()
-
-        elif args.model == 'keras':
-
-            if args.mode == 'train':
-
-                Keras(newdf, args.fold).train()
-
-            elif args.mode == 'test':
-
-                Keras(newdf, args.fold).predict()
-
-            else:
-                exit()
+                LightGBM(newdf,
+                         args.mode,
+                         args.fold).predict()
 
         elif args.model == 'catboost':
 
             if args.mode == 'train':
 
-                CatBoost(newdf, args.fold, args.mode).train()
+                CatBoost(newdf,
+                         args.fold,
+                         lr=args.lr).train()
 
             elif args.mode == 'test':
 
-                CatBoost(newdf, args.fold, args.mode).predict()
+                CatBoost(newdf,
+                         args.mode,
+                         args.fold).predict()
 
             else:
                 exit()
+
+        elif args.model == 'keras':
+
+            if args.mode == 'train':
+
+                Keras(newdf,
+                      args.fold,
+                      args.batch_size,
+                      lr=args.lr,
+                      epochs=args.epochs).train()
+
+            elif args.mode == 'test':
+
+                Keras(newdf,
+                      args.fold,
+                      args.batch_size).predict()
+
+            else:
+                exit()
+
     else:
         print('Choose only train or test mode')
         exit()

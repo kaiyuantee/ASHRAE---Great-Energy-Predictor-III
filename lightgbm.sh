@@ -1,13 +1,14 @@
 #!/bin/bash
 
-do
-	echo "LightGBM Model"
+echo "LightGBM Model"
 
-	python -m main.train.main \
-	--model lighgbm \
-	--mode train \
+python -m main.train.main \
+--model lightgbm \
+--mode train \
+--fold 4 \
+--lr 0.05
 
-	python -m main.train.main \
-	--model lightgbm \
-	--mode test
-done
+python -m main.train.main \
+--model lightgbm \
+--mode test \
+--fold 4

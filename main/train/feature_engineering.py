@@ -3,7 +3,7 @@ import pandas as pd
 import gc
 from sklearn.preprocessing import LabelEncoder
 from .utils import memory_reducer
-from .directories import DATA_ROOT
+from ..directories import DATA_ROOT
 
 le = LabelEncoder()
 

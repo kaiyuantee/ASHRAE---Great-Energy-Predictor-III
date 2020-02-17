@@ -14,7 +14,7 @@ from sklearn.metrics import mean_squared_error
 import gc
 import pickle
 from tqdm import tqdm
-from .directories import OUTPUT_ROOT, LGBM_ROOT, KERAS_ROOT, CATBOOST_ROOT
+from ..directories import OUTPUT_ROOT, LGBM_ROOT, KERAS_ROOT, CATBOOST_ROOT
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -26,28 +26,20 @@ category_cols = ["building_id",
                  'is_holiday']
 
 
-def lgbmcolumns(df, mode):
-    if mode == 'train':
-        all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading"]]
-        return df[all_features]
+def lgbmcolumns(df):
 
-    elif mode == 'test':
-        all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
-        return df[all_features]
+    all_features = [col for col in df.columns if col not in ["timestamp", "site_id", "meter_reading", "row_id"]]
+    return df[all_features]
 
 
-def catcolumns(df, mode):
-    if mode == 'train':
-        all_features = [col for col in df.columns if col not in ["timestamp", "meter", "meter_reading"]]
-        return df[all_features]
+def catcolumns(df):
 
-    elif mode == 'test':
-        all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
-        return df[all_features]
+    all_features = [col for col in df.columns if col not in ["timestamp", "meter", "meter_reading", "row_id"]]
+    return df[all_features]
 
 
 def kerascolumns(df):
-    all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading"]]
+    all_features = [col for col in df.columns if col not in ["timestamp", "meter_reading", "row_id"]]
     return df[all_features]
 
 
@@ -57,10 +49,9 @@ def root_mean_squared_error(y_true, y_pred):
 
 class LightGBM(object):
 
-    def __init__(self, x, folds, mode, objective='regression',
-                 boosting='gbdt', metric='rmse',
-                 num_leaves=31, lr=0.05, bagg_freq=5,
-                 bagg_frac=0.95, feature_frac=0.85,
+    def __init__(self, x, fold, lr=0.01, objective='regression',
+                 boosting='gbdt', metric='rmse', num_leaves=31,
+                 bagg_freq=5, bagg_frac=0.95, feature_frac=0.85,
                  reg_lambda=2, num_boost_round=1000,
                  verbose_eval=50, early_stopping=50):
 
@@ -69,7 +60,7 @@ class LightGBM(object):
         self.boosting = boosting
         self.num_leaves = num_leaves
         self.bagg_freq = bagg_freq
-        self.lr = lr
+        self.lr = float(lr)
         self.bagg_frac = bagg_frac
         self.feature_frac = feature_frac
         self.reg_lambda = reg_lambda
@@ -78,14 +69,13 @@ class LightGBM(object):
         self.num_boost_round = num_boost_round
         self.verbose_eval = verbose_eval
         self.early_stopping = early_stopping
-        self.fold = folds
-        self.mode = mode
+        self.fold = int(fold)
 
     def transform(self, i):
 
         x = self.x[self.x.site_id == i].reset_index(drop=True)
         y = x.meter_reading
-        x = lgbmcolumns(x, self.mode)
+        x = lgbmcolumns(x)
 
         return x, y
 
@@ -151,7 +141,7 @@ class LightGBM(object):
 
             df = self.x[self.x.site_id == i]
             row_ids_site = df.row_id
-            df = lgbmcolumns(df, self.mode)
+            df = lgbmcolumns(df)
             y_pred_test_site = np.zeros(df.shape[0])
             with open(LGBM_ROOT / 'lgbm_allmodels.p', 'rb') as input_file:
                 lgbm_allmodels = pickle.load(input_file)
@@ -174,16 +164,22 @@ class LightGBM(object):
 
 
 class CatBoost(object):
-    def __init__(self, x, fold, mode):
+    def __init__(self, x, fold, lr=0.01, n_estimators=2000,
+                 metric_period=10, early_stopping=100, depth=8):
+
         self.x = x
-        self.fold = fold
-        self.mode = mode
+        self.fold = int(fold)
+        self.n_estimators = n_estimators
+        self.lr = float(lr)
+        self.metric_period = metric_period
+        self.early_stopping = early_stopping
+        self.depth = depth
 
     def transform(self, i):
 
         x = self.x[self.x.meter == i].reset_index(drop=True)
         y = x.meter_reading
-        x = catcolumns(x, self.mode)
+        x = catcolumns(x)
 
         return x, y
 
@@ -205,15 +201,15 @@ class CatBoost(object):
                 x_t, x_v = x.iloc[train_index], x.iloc[valid_index]
                 y_t, y_v = y.iloc[train_index], y.iloc[valid_index]
                 cat_params = {
-                    'n_estimators': 2000,
-                    'learning_rate': 0.1,
+                    'n_estimators': self.n_estimators,
+                    'learning_rate': self.lr,
                     'eval_metric': 'RMSE',
                     'loss_function': 'RMSE',
-                    'metric_period': 10,
+                    'metric_period': self.metric_period,
                     'task_type': 'GPU',
                     'devices': '0:1',
-                    'early_stopping_rounds': 100,
-                    'depth': 8,
+                    'early_stopping_rounds': self.early_stopping,
+                    'depth': self.depth,
                 }
                 estimator = CatBoostRegressor(**cat_params)
                 catmodel = estimator.fit(
@@ -248,7 +244,7 @@ class CatBoost(object):
 
             df = self.x[self.x.meter == i]
             row_ids_site = df.row_id
-            df = catcolumns(df, self.mode)
+            df = catcolumns(df)
             y_pred_test_site = np.zeros(df.shape[0])
             with open(CATBOOST_ROOT / 'catboost_allmodels.p', 'rb') as input_file:
                 cat_allmodels = pickle.load(input_file)
@@ -271,10 +267,11 @@ class CatBoost(object):
 
 class Keras(object):
 
-    def __init__(self, x, dense_dim_1=64, dense_dim_2=32,
+    def __init__(self, x, fold, batch_size,
+                 lr=0.001, dense_dim_1=64, dense_dim_2=32,
                  dense_dim_3=32, dense_dim_4=16, dropout1=0.2,
-                 dropout2=0.1, dropout3=0.1, dropout4=0.1, lr=0.001,
-                 batch_size=1024, epochs=10, patience=3, fold=4):
+                 dropout2=0.1, dropout3=0.1, dropout4=0.1,
+                 epochs=10, patience=3):
         self.x = x
         self.dense_dim_1 = dense_dim_1
         self.dense_dim_2 = dense_dim_2
@@ -284,11 +281,11 @@ class Keras(object):
         self.dropout2 = dropout2
         self.dropout3 = dropout3
         self.dropout4 = dropout4
-        self.lr = lr
-        self.batch_size = batch_size
-        self.epochs = epochs
+        self.lr = float(lr)
+        self.batch_size = int(batch_size)
+        self.epochs = int(epochs)
         self.patience = patience
-        self.fold = fold
+        self.fold = int(fold)
 
     def body(self):
         # Inputs
@@ -482,17 +479,16 @@ class Keras(object):
 
         i = 0
         result = np.zeros((self.x.shape[0]), dtype=np.float32)
-        step_size = 5000
         row_ids = self.x.row_id
         with open(KERAS_ROOT / 'keras_allmodels.p', 'rb') as input_file:
             keras_allmodels = pickle.load(input_file)
         print('Predicting for Keras Embedding Model now')
-        for j in tqdm(range(int(np.ceil(self.x.shape[0] / step_size)))):
-            batched_df = self.x.iloc[i: i + step_size]
+        for j in tqdm(range(int(np.ceil(self.x.shape[0] / self.batch_size)))):
+            batched_df = self.x.iloc[i: i + self.batch_size]
             for_prediction = kerascolumns(batched_df)
-            result[i:min(i + step_size, self.x.shape[0])] =\
+            result[i:min(i + self.batch_size, self.x.shape[0])] =\
                 np.expm1(sum([model.predict(for_prediction, batch_size=1024)[:, 0] for model in keras_allmodels]) / self.fold)
-            i += step_size
+            i += self.batch_size
 
         submission = pd.DataFrame({"row_id": row_ids, "meter_reading": result})
         submission.meter_reading = np.clip(np.expm1(submission.meter_reading), 0, a_max=None)

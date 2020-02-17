@@ -1,8 +1,6 @@
 #!/bin/bash
 
-do
-	echo "Ensembing models"
-	
-	python -m main.train.blend
+echo "Ensembing models"
 
-done
+python -m main.train.ensemble
+
