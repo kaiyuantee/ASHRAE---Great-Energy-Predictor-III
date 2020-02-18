@@ -10,10 +10,12 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 class GeneralizedMeanBlender():
-    """Combines multiple predictions using generalized mean"""
+    """
+    Based on this great kernel https://www.kaggle.com/mmotoki/generalized-weighted-mean
+    Combines multiple predictions using generalized mean
+    """
 
     def __init__(self, p_range=(-2, 2)):
-        """"""
         self.p_range = p_range
         self.p = None
         self.weights = None

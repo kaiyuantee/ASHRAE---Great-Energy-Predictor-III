@@ -40,9 +40,12 @@ class Dataset(object):
 
 
 def memory_reducer(df, use_float16=False):
-    """ iterate through all the columns of a dataframe and modify the data type
-               to reduce memory usage.
-           """
+
+    """
+    Based on this great kernel https://www.kaggle.com/arjanso/reducing-dataframe-memory-size-by-65
+    Iterate through all the columns of a dataframe and modify the data type to reduce memory usage.
+    """
+
     start_mem = df.memory_usage().sum() / 1024 ** 2
     print('Memory usage of dataframe is {:.2f} MB'.format(start_mem))
 
