@@ -56,11 +56,11 @@ Types of models:
 * CatBoost Model 
 * Keras Embedding Model
 
-#### LightGBM Model
+##### LightGBM Model
 This model is trained on 1 model per site_id
-#### Catboost Model
+##### Catboost Model
 This model is trained on 1 model per meter_type
-#### Keras Embedding Model
+##### Keras Embedding Model
 This model is trained on full dataset. No splitting is done
 
 ### Cross Validation 
@@ -68,7 +68,9 @@ K-Fold Cross Validation method is adopted as the CV method for all models. 4-fol
 
 ### Ensembling
 Ensembling predictions from different types of models can reduce the risk of overfitting and improving the robustness of the model.
-These predictions of the models are ensembled together by weighted generalized mean and the parameters are tuned using Optuna.
+These predictions of the models are ensembled together by weighted generalized mean and the parameters are tuned using Optuna. 
+
+The overall RMSLE score for the final predictions is 0.98
 
 ## Requirements
 All the codes are written in Python 3.6.
@@ -78,4 +80,39 @@ Install the requirements pacakages:
 pip install -r requirements.txt
 python setup.py develop
  ```
+## Run
+To run everything at once:
+
+```
+cd sh
+./run_all.sh
+```
+To run things separately:
+#### Creating directories
+```
+cd sh
+./directories.sh
+```
+
+#### Train & Predict LightGBM Model
+```
+cd sh
+./lightgbm.sh
+```
+#### Train & Predict CatBoost Model 
+```
+cd sh
+./catboost.sh
+```
+#### Train & Predict Keras Embedding Model
+```
+cd sh
+./keras.sh
+```
+#### Ensembling predictions from all models
+```
+cd sh
+./ensemble.sh
+```
+
  
